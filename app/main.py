@@ -272,6 +272,18 @@ async def abuse_report_partial(request: Request, ip: str):
     )
 
 
+@app.get("/api/stats/summary")
+async def api_stats_summary():
+    s = db.stats_summary()
+    return JSONResponse(
+        {
+            "CurrentlyActive": s["active"],
+            "TotalBBans": s["total"],
+            "UniqueIpsBanned": s["unique_ips"],
+        }
+    )
+
+
 @app.get("/api/bans")
 async def api_bans(
     ip: str | None = None,
