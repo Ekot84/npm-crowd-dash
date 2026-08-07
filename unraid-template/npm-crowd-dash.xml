@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>npm-crowd-dash</Name>
+  <Repository>ghcr.io/ekot84/npm-crowd-dash:latest</Repository>
+  <Registry>https://ghcr.io</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/Ekot84/npm-crowd-dash/issues</Support>
+  <Project>https://github.com/Ekot84/npm-crowd-dash</Project>
+  <Overview>
+A small dashboard that shows CrowdSec bans (and AppSec/WAF blocks) - IP, reason/scenario, source, country/AS, time issued, expiry - without having to run "cscli decision list" or dig through the CrowdSec console.
+  </Overview>
+  <Category>Tools: Status:Monitoring Network:Web</Category>
+  <WebUI>http://[IP]:[PORT:8000]</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/Ekot84/npm-crowd-dash/master/unraid-template/npm-crowd-dash.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/Ekot84/npm-crowd-dash/master/unraid-template/icon.png</Icon>
+  <ExtraParams></ExtraParams>
+  <Date></Date>
+  <Description>
+Polls CrowdSec's own LAPI directly (/v1/decisions/stream + /v1/alerts), keeps a local history in SQLite (CrowdSec forgets a decision once it expires - this doesn't), and serves an auto-refreshing table via FastAPI + HTMX (single container, no JS build step).
+
+Setup:
+- On the CrowdSec container, run "cscli bouncers add dashboard-reader" for a bouncer key, and "cscli machines add dashboard-reader --auto" for a machine account
+- Fill in the CrowdSec LAPI URL (LAN IP, not 127.0.0.1, if CrowdSec runs in its own container) and the credentials above into the variables below
+  </Description>
+  <Requires></Requires>
+  <Config Name="WebUI Port" Target="8000" Default="8000" Mode="tcp" Description="Port the dashboard is served on." Type="Port" Display="always" Required="true" Mask="false">8000</Config>
+  <Config Name="Data" Target="/data" Default="/mnt/user/appdata/npm-crowd-dash/data" Mode="rw" Description="SQLite database and persisted history." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/npm-crowd-dash/data</Config>
+  <Config Name="CrowdSec LAPI URL" Target="CROWDSEC_LAPI_URL" Default="" Mode="" Description="LAN URL of the CrowdSec LAPI, e.g. http://192.168.1.10:8301" Type="Variable" Display="always" Required="true" Mask="false"></Config>
+  <Config Name="Bouncer Key" Target="CROWDSEC_BOUNCER_KEY" Default="" Mode="" Description="From: cscli bouncers add dashboard-reader" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="Machine ID" Target="CROWDSEC_MACHINE_ID" Default="" Mode="" Description="From: cscli machines add dashboard-reader --auto" Type="Variable" Display="always" Required="true" Mask="false"></Config>
+  <Config Name="Machine Password" Target="CROWDSEC_MACHINE_PASSWORD" Default="" Mode="" Description="From: cscli machines add dashboard-reader --auto" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="Poll Interval (seconds)" Target="POLL_INTERVAL_SECONDS" Default="15" Mode="" Description="How often the LAPI is polled." Type="Variable" Display="advanced" Required="false" Mask="false">15</Config>
+  <Config Name="Retention (days)" Target="RETENTION_DAYS" Default="90" Mode="" Description="How long expired decisions are kept in history." Type="Variable" Display="advanced" Required="false" Mask="false">90</Config>
+  <Config Name="Repeat Offender Threshold" Target="REPEAT_OFFENDER_THRESHOLD" Default="3" Mode="" Description="Number of bans before an IP is flagged as a repeat offender." Type="Variable" Display="advanced" Required="false" Mask="false">3</Config>
+  <Config Name="Country Ban Threshold" Target="COUNTRY_BAN_THRESHOLD" Default="10" Mode="" Description="Number of bans before a country is flagged." Type="Variable" Display="advanced" Required="false" Mask="false">10</Config>
+  <Config Name="Timezone" Target="TZ" Default="Europe/Stockholm" Mode="" Description="Timezone for timestamps and logs." Type="Variable" Display="always" Required="false" Mask="false">Europe/Stockholm</Config>
+</Container>
