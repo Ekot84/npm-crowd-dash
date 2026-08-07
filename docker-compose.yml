@@ -18,4 +18,4 @@ services:
       COUNTRY_BAN_THRESHOLD: "${COUNTRY_BAN_THRESHOLD:-10}"
       TZ: "Europe/Stockholm"
     volumes:
-      - ./data:/data
+      - /mnt/user/appdata/npm-crowd-dash/data:/data
