@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<form class="filter-bar"
+      hx-get="/partials/stats"
+      hx-target="#stats-wrap"
+      hx-trigger="change from:select, load"
+      hx-include="this">
+    <select name="status">
+        <option value="active">Active</option>
+        <option value="expired">Expired</option>
+        <option value="" selected>All</option>
+    </select>
+    <span class="filter-hint">applies to country, source, scenario and hosting-provider breakdowns — repeat offenders below always cover full history</span>
+</form>
+
+<div id="stats-wrap"
+     hx-get="/partials/stats"
+     hx-trigger="every 30s"
+     hx-include=".filter-bar">
+    Loading…
+</div>
+{% endblock %}

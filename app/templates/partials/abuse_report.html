@@ -1,0 +1,11 @@
+<div class="abuse-box">
+    {% if abuse_email %}
+    <p>Abuse contact found: <code>{{ abuse_email }}</code></p>
+    <p><a href="{{ mailto_href }}">Open pre-filled email to {{ abuse_email }}</a></p>
+    {% else %}
+    <p>Couldn't automatically find an abuse contact (RDAP lookup failed or no
+        abuse role listed). Look up the network's abuse contact manually, then
+        use the text below.</p>
+    {% endif %}
+    <textarea readonly rows="11" onclick="this.select()">{{ report_text }}</textarea>
+</div>

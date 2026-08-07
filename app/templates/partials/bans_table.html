@@ -1,0 +1,49 @@
+<table class="bans-table">
+    <thead>
+        <tr>
+            <th>IP</th>
+            <th>Source</th>
+            <th>Scenario / reason</th>
+            <th>Country</th>
+            <th>AS</th>
+            <th>Since</th>
+            <th>Expires</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for ban in bans %}
+        <tr class="{{ 'row-active' if ban.is_active else 'row-expired' }}">
+            <td class="mono">{{ ban.ip }}</td>
+            <td><span class="badge badge-{{ ban.source_type }}">{{ ban.source_type }}</span></td>
+            <td>
+                <div class="scenario">{{ ban.scenario or "—" }}</div>
+                {% if ban.reason_message %}
+                <div class="reason">{{ ban.reason_message }}</div>
+                {% endif %}
+            </td>
+            <td>{{ ban.country or "—" }}</td>
+            <td>{{ '☁ ' if ban.is_cloud_host else '' }}{{ ban.as_name or "—" }}</td>
+            <td class="mono">{{ ban.created_at_str }}</td>
+            <td class="mono">{{ ban.expires_at_str }}</td>
+            <td>
+                {% if ban.is_active %}
+                <span class="pill pill-active">active</span>
+                {% else %}
+                <span class="pill pill-expired">expired</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="8" class="empty">No bans match this filter.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% if has_more %}
+<button type="button" class="load-more"
+        hx-on:click="var el = document.querySelector('.filter-bar [name=limit]'); el.value = parseInt(el.value) + 50; el.dispatchEvent(new Event('input', {bubbles: true}));">
+    Load more
+</button>
+{% endif %}

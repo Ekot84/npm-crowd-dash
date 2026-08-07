@@ -1,0 +1,58 @@
+<div class="stat-cards">
+    <div class="stat-card">
+        <div class="stat-value">{{ summary.total }}</div>
+        <div class="stat-label">Total bans (history)</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ summary.active }}</div>
+        <div class="stat-label">Currently active</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ summary.unique_ips }}</div>
+        <div class="stat-label">Unique IPs banned</div>
+    </div>
+</div>
+
+<div class="stats-grid">
+    <div class="stats-panel">
+        <h2>Bans by country</h2>
+        {% with rows=country_rows, offset=country_offset, has_prev=country_has_prev, has_next=country_has_next %}
+        {% include "partials/stats_panel_countries.html" %}
+        {% endwith %}
+    </div>
+
+    <div class="stats-panel">
+        <h2>By source</h2>
+        <table class="stats-table">
+            <thead><tr><th>Source</th><th>Count</th></tr></thead>
+            <tbody>
+                {% for row in by_source %}
+                <tr><td><span class="badge badge-{{ row.source_type }}">{{ row.source_type }}</span></td><td class="mono">{{ row.count }}</td></tr>
+                {% else %}
+                <tr><td colspan="2" class="empty">No data.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="stats-panel stats-panel-wide">
+        <h2>Top scenarios / reasons</h2>
+        {% with rows=scenario_rows, offset=scenario_offset, has_prev=scenario_has_prev, has_next=scenario_has_next %}
+        {% include "partials/stats_panel_scenarios.html" %}
+        {% endwith %}
+    </div>
+
+    <div class="stats-panel stats-panel-wide">
+        <h2>Top hosting providers (AS)</h2>
+        {% with rows=as_rows, offset=as_offset, has_prev=as_has_prev, has_next=as_has_next %}
+        {% include "partials/stats_panel_as.html" %}
+        {% endwith %}
+    </div>
+
+    <div class="stats-panel stats-panel-wide">
+        <h2>Repeat offenders</h2>
+        {% with rows=repeat_rows, offset=repeat_offset, has_prev=repeat_has_prev, has_next=repeat_has_next %}
+        {% include "partials/stats_panel_repeat_offenders.html" %}
+        {% endwith %}
+    </div>
+</div>

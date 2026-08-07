@@ -1,0 +1,49 @@
+<div id="panel-repeat-offenders"
+     hx-get="/partials/stats/panel?kind=repeat-offenders&offset={{ offset }}"
+     hx-trigger="every 30s"
+     hx-swap="outerHTML">
+    <table class="stats-table">
+        <thead><tr><th>IP</th><th>Times banned</th><th>Country</th><th>AS</th><th>Last seen</th></tr></thead>
+        <tbody>
+            {% for row in rows %}
+            <tr class="{{ 'flagged' if row.times_banned >= repeat_offender_threshold else '' }}">
+                <td class="mono">{{ '⚠ ' if row.times_banned >= repeat_offender_threshold else '' }}{{ row.ip }}</td>
+                <td class="mono">{{ row.times_banned }}</td>
+                <td>{{ row.country or "—" }}</td>
+                <td>{{ '☁ ' if row.is_cloud_host else '' }}{{ row.as_name or "—" }}</td>
+                <td class="mono">{{ row.last_seen_str }}</td>
+            </tr>
+            {% if row.times_banned >= repeat_offender_threshold %}
+            <tr class="hint-row">
+                <td colspan="5">
+                    Banned {{ row.times_banned }} times
+                    {% if row.is_cloud_host %}(on {{ row.as_name }} — check it's actually the same
+                    attacker and not just churn within a shared hosting range) {% endif %}—
+                    consider a permanent block:
+                    <code>cscli decisions add --ip {{ row.ip }} --reason "manual permanent block" --duration 8760h</code>
+                    <button type="button" class="pager-btn abuse-btn"
+                            hx-get="/partials/abuse-report?ip={{ row.ip }}"
+                            hx-target="#abuse-report-{{ row.ip | replace('.', '_') }}"
+                            hx-swap="innerHTML">
+                        Prepare abuse report
+                    </button>
+                    <div id="abuse-report-{{ row.ip | replace('.', '_') }}"></div>
+                </td>
+            </tr>
+            {% endif %}
+            {% else %}
+            <tr><td colspan="5" class="empty">No repeat offenders yet.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% if has_prev or has_next %}
+    <div class="pager">
+        <button type="button" class="pager-btn" {{ 'disabled' if not has_prev else '' }}
+                hx-get="/partials/stats/panel?kind=repeat-offenders&offset={{ [offset - page_size, 0] | max }}"
+                hx-target="#panel-repeat-offenders" hx-swap="outerHTML">←</button>
+        <button type="button" class="pager-btn" {{ 'disabled' if not has_next else '' }}
+                hx-get="/partials/stats/panel?kind=repeat-offenders&offset={{ offset + page_size }}"
+                hx-target="#panel-repeat-offenders" hx-swap="outerHTML">→</button>
+    </div>
+    {% endif %}
+</div>

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>npm-crowd-dash</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/htmx.min.js"></script>
+</head>
+<body>
+    <header>
+        <div class="header-top">
+            <div>
+                <h1>npm-crowd-dash</h1>
+                <p class="subtitle">CrowdSec bans &amp; AppSec blocks</p>
+            </div>
+            <div id="poll-status" class="poll-status"
+                 hx-get="/partials/status" hx-trigger="load, every 10s" hx-swap="innerHTML">
+            </div>
+        </div>
+        <nav class="nav">
+            <a href="/" class="{{ 'active' if active_page == 'stats' else '' }}">Stats</a>
+            <a href="/bans" class="{{ 'active' if active_page == 'bans' else '' }}">Bans
+                <span id="bans-count" hx-get="/partials/bans-count" hx-trigger="load, every 10s" hx-swap="innerHTML">(…)</span>
+            </a>
+        </nav>
+    </header>
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

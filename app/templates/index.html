@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<form class="filter-bar"
+      hx-get="/partials/bans-table"
+      hx-target="#bans-table-wrap"
+      hx-trigger="input changed delay:300ms from:[name='ip'], input changed delay:300ms from:[name='country'], input changed delay:300ms from:[name='scenario'], change from:select, input from:[name='limit'], load"
+      hx-include="this">
+    <input type="text" name="ip" placeholder="Filter by IP…" autocomplete="off">
+    <input type="text" name="country" placeholder="Filter by country…" autocomplete="off">
+    <input type="text" name="scenario" placeholder="Filter by scenario/reason…" autocomplete="off">
+    <select name="source_type">
+        <option value="">All sources</option>
+        <option value="crowdsec">CrowdSec</option>
+        <option value="appsec">AppSec</option>
+    </select>
+    <select name="status">
+        <option value="active" selected>Active</option>
+        <option value="expired">Expired</option>
+        <option value="">All</option>
+    </select>
+    <input type="hidden" name="limit" value="50">
+</form>
+
+<div id="bans-table-wrap"
+     hx-get="/partials/bans-table"
+     hx-trigger="every 10s"
+     hx-include=".filter-bar">
+    Loading…
+</div>
+{% endblock %}

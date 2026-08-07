@@ -1,0 +1,33 @@
+<div id="panel-as"
+     hx-get="/partials/stats/panel?kind=as&status={{ status }}&offset={{ offset }}"
+     hx-trigger="every 30s"
+     hx-swap="outerHTML">
+    <table class="stats-table">
+        <thead><tr><th>AS</th><th>Countries seen</th><th>Count</th></tr></thead>
+        <tbody>
+            {% for row in rows %}
+            <tr>
+                <td>{{ '☁ ' if row.is_cloud_host else '' }}{{ row.as_name }}</td>
+                <td>{{ row.countries or "—" }}</td>
+                <td class="mono">{{ row.count }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="3" class="empty">No data.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <p class="filter-hint">☁ = known cloud/hosting provider — often shared by many
+        unrelated tenants, so matching on the AS/CIDR hits more than just your attacker.
+        "Countries seen" lists every distinct country observed for that AS across its
+        bans, not a single guess — large providers legitimately span many.</p>
+    {% if has_prev or has_next %}
+    <div class="pager">
+        <button type="button" class="pager-btn" {{ 'disabled' if not has_prev else '' }}
+                hx-get="/partials/stats/panel?kind=as&status={{ status }}&offset={{ [offset - page_size, 0] | max }}"
+                hx-target="#panel-as" hx-swap="outerHTML">←</button>
+        <button type="button" class="pager-btn" {{ 'disabled' if not has_next else '' }}
+                hx-get="/partials/stats/panel?kind=as&status={{ status }}&offset={{ offset + page_size }}"
+                hx-target="#panel-as" hx-swap="outerHTML">→</button>
+    </div>
+    {% endif %}
+</div>

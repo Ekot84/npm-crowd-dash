@@ -1,0 +1,21 @@
+services:
+  npm-crowd-dash:
+    build: .
+    image: npm-crowd-dash:latest
+    container_name: npm-crowd-dash
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      CROWDSEC_LAPI_URL: "${CROWDSEC_LAPI_URL}"
+      CROWDSEC_BOUNCER_KEY: "${CROWDSEC_BOUNCER_KEY}"
+      CROWDSEC_MACHINE_ID: "${CROWDSEC_MACHINE_ID}"
+      CROWDSEC_MACHINE_PASSWORD: "${CROWDSEC_MACHINE_PASSWORD}"
+      POLL_INTERVAL_SECONDS: "${POLL_INTERVAL_SECONDS:-15}"
+      DB_PATH: "${DB_PATH:-/data/dashboard.db}"
+      RETENTION_DAYS: "${RETENTION_DAYS:-90}"
+      REPEAT_OFFENDER_THRESHOLD: "${REPEAT_OFFENDER_THRESHOLD:-3}"
+      COUNTRY_BAN_THRESHOLD: "${COUNTRY_BAN_THRESHOLD:-10}"
+      TZ: "Europe/Stockholm"
+    volumes:
+      - ./data:/data

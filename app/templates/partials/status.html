@@ -1,0 +1,9 @@
+{% if last_poll_at_str is none %}
+<span class="status-dot status-stale"></span> polling…
+{% elif healthy %}
+<span class="status-dot status-ok"></span> synced {{ last_poll_at_str }}
+{% elif stale %}
+<span class="status-dot status-error"></span> stale — last synced {{ last_poll_at_str }}
+{% else %}
+<span class="status-dot status-error"></span> poll error at {{ last_poll_at_str }}{% if error %} ({{ error }}){% endif %}
+{% endif %}
