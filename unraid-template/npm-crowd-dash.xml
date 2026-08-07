@@ -14,8 +14,8 @@ A small dashboard that shows CrowdSec bans (and AppSec/WAF blocks) - IP, reason/
   </Overview>
   <Category>Tools: Status:Monitoring Network:Web</Category>
   <WebUI>http://[IP]:[PORT:8000]</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/Ekot84/npm-crowd-dash/master/unraid-template/npm-crowd-dash.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/Ekot84/npm-crowd-dash/master/unraid-template/icon.png</Icon>
+  <TemplateURL>https://raw.githubusercontent.com/Ekot84/npm-crowd-dash/main/unraid-template/npm-crowd-dash.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/Ekot84/npm-crowd-dash/main/unraid-template/icon.png</Icon>
   <ExtraParams></ExtraParams>
   <Date></Date>
   <Description>
