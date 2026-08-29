@@ -8,7 +8,7 @@ from datetime import datetime
 
 import httpx
 
-from . import db
+from . import abuse, db, mailer, reports
 from .config import settings
 from .crowdsec_client import CrowdSecClient
 
@@ -299,6 +299,62 @@ async def _backfill_missing_enrichment(client: CrowdSecClient) -> None:
     await asyncio.gather(*(_retry(r) for r in rows))
 
 
+_auto_abuse_report_warned = False
+
+
+async def _check_auto_abuse_reports() -> None:
+    """Opt-in (AUTO_ABUSE_REPORT): once an IP crosses AUTO_ABUSE_THRESHOLD
+    bans, look up its network's abuse contact and email the same report the
+    "Prepare abuse report" button builds manually, then mark it sent so it's
+    never reported twice. A missing abuse email or a send failure just skips
+    that IP for this cycle — both get retried automatically next cycle since
+    db.auto_report_candidates() only excludes IPs with status='sent'."""
+    global _auto_abuse_report_warned
+
+    if not settings.auto_abuse_report:
+        return
+
+    if not mailer.smtp_configured():
+        if not _auto_abuse_report_warned:
+            log.warning(
+                "AUTO_ABUSE_REPORT is enabled but SMTP_HOST/SMTP_USER/SMTP_PASSWORD/"
+                "SMTP_FROM aren't fully set — auto abuse reports are disabled until "
+                "they are (logged once)."
+            )
+            _auto_abuse_report_warned = True
+        return
+
+    for ip in db.auto_report_candidates(settings.auto_abuse_threshold):
+        summary = db.ip_summary(ip)
+        if summary is None:
+            continue
+
+        try:
+            abuse_email = await abuse.lookup_abuse_email(ip)
+        except Exception:
+            log.exception("RDAP lookup failed for %s during auto abuse report check", ip)
+            continue
+        if not abuse_email:
+            log.info("no abuse contact found for %s yet, will retry next cycle", ip)
+            continue
+
+        report_text = reports.build_report_text(ip, summary)
+        subject = reports.build_subject(ip)
+        try:
+            await mailer.send_abuse_report_email(abuse_email, subject, report_text)
+        except Exception:
+            log.exception("failed to send auto abuse report for %s to %s", ip, abuse_email)
+            db.record_abuse_report(
+                ip, times_banned_at_send=summary["times_banned"], recipient=abuse_email, status="failed"
+            )
+            continue
+
+        db.record_abuse_report(
+            ip, times_banned_at_send=summary["times_banned"], recipient=abuse_email, status="sent"
+        )
+        log.info("sent auto abuse report for %s (%d bans) to %s", ip, summary["times_banned"], abuse_email)
+
+
 async def poll_forever(stop_event: asyncio.Event) -> None:
     global last_poll_at, last_poll_ok, last_poll_error
 
@@ -324,6 +380,11 @@ async def poll_forever(stop_event: asyncio.Event) -> None:
                 await _backfill_missing_enrichment(client)
             except Exception:
                 log.exception("enrichment backfill failed")
+
+            try:
+                await _check_auto_abuse_reports()
+            except Exception:
+                log.exception("auto abuse report check failed")
 
             if last_poll_at - last_purge_at > _PURGE_INTERVAL_SECONDS:
                 try:

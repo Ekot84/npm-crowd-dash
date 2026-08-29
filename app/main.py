@@ -4,14 +4,13 @@ import logging
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from urllib.parse import quote
 
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import abuse, db, poller
+from . import abuse, db, poller, reports
 from .config import settings
 from .poller import poll_forever
 
@@ -223,30 +222,6 @@ async def stats_panel(request: Request, kind: str, status: str = "", offset: int
     return JSONResponse({"error": f"unknown kind: {kind}"}, status_code=400)
 
 
-def _abuse_report_text(ip: str, summary: dict) -> str:
-    activity = summary.get("reason_message") or summary.get("scenario") or "n/a"
-    lines = [
-        "Hello,",
-        "",
-        "Our automated intrusion-prevention system (CrowdSec) has repeatedly",
-        "detected malicious activity from this IP address, hosted on your network:",
-        "",
-        f"IP address: {ip}",
-        f"Autonomous system: {summary.get('as_name') or 'unknown'}",
-        f"Country (GeoIP): {summary.get('country') or 'unknown'}",
-        f"Times banned: {summary['times_banned']}",
-        f"First detected: {_fmt_ts(summary['first_seen'])}",
-        f"Last detected: {_fmt_ts(summary['last_seen'])}",
-        f"Most recent detected activity: {activity}",
-        "",
-        "We would appreciate it if you could investigate this IP/customer and",
-        "take appropriate action.",
-        "",
-        "Thank you.",
-    ]
-    return "\n".join(lines)
-
-
 @app.get("/partials/abuse-report")
 async def abuse_report_partial(request: Request, ip: str):
     try:
@@ -259,11 +234,10 @@ async def abuse_report_partial(request: Request, ip: str):
         return JSONResponse({"error": "no ban history for this ip"}, status_code=404)
 
     abuse_email = await abuse.lookup_abuse_email(ip)
-    report_text = _abuse_report_text(ip, summary)
+    report_text = reports.build_report_text(ip, summary)
     mailto_href = None
     if abuse_email:
-        subject = f"Abuse report - repeated malicious activity from {ip}"
-        mailto_href = f"mailto:{abuse_email}?subject={quote(subject)}&body={quote(report_text)}"
+        mailto_href = reports.build_mailto_href(ip, abuse_email, report_text)
 
     return templates.TemplateResponse(
         request,

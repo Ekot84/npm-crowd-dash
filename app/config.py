@@ -14,5 +14,17 @@ class Settings(BaseSettings):
     repeat_offender_threshold: int = 3
     country_ban_threshold: int = 10
 
+    # Opt-in: automatically email the network's abuse contact once an IP
+    # crosses auto_abuse_threshold bans, instead of relying on someone
+    # clicking "Prepare abuse report" in the UI. Off by default — this sends
+    # real email on your behalf, so it should be a deliberate choice.
+    auto_abuse_report: bool = False
+    auto_abuse_threshold: int = 8
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_user: str | None = None
+    smtp_password: str | None = None
+    smtp_from: str | None = None
+
 
 settings = Settings()

@@ -17,5 +17,13 @@ services:
       REPEAT_OFFENDER_THRESHOLD: "${REPEAT_OFFENDER_THRESHOLD:-3}"
       COUNTRY_BAN_THRESHOLD: "${COUNTRY_BAN_THRESHOLD:-10}"
       TZ: "Europe/Stockholm"
+      # Optional automatic abuse-report emailing — see .env.example.
+      AUTO_ABUSE_REPORT: "${AUTO_ABUSE_REPORT:-false}"
+      AUTO_ABUSE_THRESHOLD: "${AUTO_ABUSE_THRESHOLD:-8}"
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_USER: "${SMTP_USER:-}"
+      SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
+      SMTP_FROM: "${SMTP_FROM:-}"
     volumes:
       - /mnt/user/appdata/npm-crowd-dash/data:/data

@@ -27,6 +27,14 @@ CREATE TABLE IF NOT EXISTS bans (
 CREATE INDEX IF NOT EXISTS idx_bans_ip ON bans(ip);
 CREATE INDEX IF NOT EXISTS idx_bans_created_at ON bans(created_at);
 CREATE INDEX IF NOT EXISTS idx_bans_source_type ON bans(source_type);
+
+CREATE TABLE IF NOT EXISTS abuse_reports (
+    ip TEXT PRIMARY KEY,
+    sent_at INTEGER NOT NULL,
+    times_banned_at_send INTEGER NOT NULL,
+    recipient TEXT NOT NULL,
+    status TEXT NOT NULL
+);
 """
 
 
@@ -50,6 +58,10 @@ def init_db() -> None:
             conn.execute("ALTER TABLE bans ADD COLUMN matched_rule TEXT")
         if "is_cloud_host" not in cols:
             conn.execute("ALTER TABLE bans ADD COLUMN is_cloud_host INTEGER NOT NULL DEFAULT 0")
+        # Note: the abuse_reports table (for auto abuse reporting) needs no
+        # migration branch here — it's a brand-new table, so the
+        # CREATE TABLE IF NOT EXISTS in SCHEMA above already handles both
+        # fresh installs and upgrades from a db that predates it.
 
 
 def upsert_ban(row: dict) -> None:
@@ -414,3 +426,50 @@ def stats_by_scenario(status: str = "active", limit: int = 5, offset: int = 0) -
             """,
             params,
         ).fetchall()
+
+
+def auto_report_candidates(threshold: int, limit: int = 50) -> list[str]:
+    """IPs that have crossed the auto-report ban threshold and don't already
+    have a *successfully sent* report on file. A previous failed attempt
+    (SMTP down, no abuse email found that day, etc.) doesn't block a retry —
+    only status='sent' does, so a transient failure doesn't permanently skip
+    an IP that should still get reported.
+
+    Same local-origin exclusion as stats_top_ips: CAPI/lists/cscli decisions
+    were never observed locally, so there's no real "repeat offender"
+    behavior to report — just noise from the shared community blocklist."""
+    with get_conn() as conn:
+        return [
+            row["ip"]
+            for row in conn.execute(
+                """
+                SELECT ip, COUNT(*) AS times_banned
+                FROM bans
+                WHERE (origin IS NULL OR origin = 'crowdsec')
+                GROUP BY ip
+                HAVING COUNT(*) >= ?
+                  AND ip NOT IN (SELECT ip FROM abuse_reports WHERE status = 'sent')
+                ORDER BY times_banned DESC
+                LIMIT ?
+                """,
+                (threshold, limit),
+            ).fetchall()
+        ]
+
+
+def record_abuse_report(ip: str, *, times_banned_at_send: int, recipient: str, status: str) -> None:
+    """status is 'sent' or 'failed'. Upserts so a retried failure updates the
+    same row rather than piling up duplicates for one IP."""
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO abuse_reports (ip, sent_at, times_banned_at_send, recipient, status)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(ip) DO UPDATE SET
+                sent_at=excluded.sent_at,
+                times_banned_at_send=excluded.times_banned_at_send,
+                recipient=excluded.recipient,
+                status=excluded.status
+            """,
+            (ip, int(time.time()), times_banned_at_send, recipient, status),
+        )

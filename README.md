@@ -44,6 +44,26 @@ On Unraid without Compose: build the image once (`docker build -t
 npm-crowd-dash .`), then add it as a container manually via "Add Container",
 using the same env vars and a `/data` volume mapping as in `docker-compose.yml`.
 
+## Optional: automatic abuse reports
+
+By default, reporting an abusive IP to its network's abuse contact is a
+manual step: the "Prepare abuse report" button on an IP's history does an
+RDAP lookup and builds a pre-filled `mailto:` link for you to send yourself.
+
+Set `AUTO_ABUSE_REPORT=true` (plus `SMTP_HOST`, `SMTP_USER`,
+`SMTP_PASSWORD`, `SMTP_FROM`, and optionally `SMTP_PORT` /
+`AUTO_ABUSE_THRESHOLD`, see `.env.example`) to have the app send that same
+report itself over SMTP once an IP reaches `AUTO_ABUSE_THRESHOLD` bans (default
+8), without anyone clicking anything. Each IP is only ever auto-reported
+once — the app records a `sent` row for it in its own `abuse_reports` table
+and skips it on future poll cycles. A send that fails (SMTP down, no abuse
+contact found that cycle, etc.) is retried on the next poll cycle rather
+than being given up on.
+
+This is off by default: it sends real email to a third party on your
+behalf, so turning it on should be a deliberate choice, not something that
+happens by just running the container.
+
 ## Notes
 
 - AppSec/WAF blocks (e.g. from `crowdsecurity/appsec-virtual-patching`) are
