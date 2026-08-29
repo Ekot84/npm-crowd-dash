@@ -5,12 +5,12 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, Form, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import abuse, db, poller, reports
+from . import abuse, db, mailer, poller, reports, runtime_settings
 from .config import settings
 from .poller import poll_forever
 
@@ -284,3 +284,91 @@ async def api_bans(
         )
     ]
     return JSONResponse(rows)
+
+
+@app.get("/settings")
+async def settings_page(request: Request):
+    return templates.TemplateResponse(
+        request, "settings.html",
+        {"active_page": "settings", "cfg": runtime_settings.get_auto_report_settings(), "saved": False},
+    )
+
+
+@app.post("/settings/save")
+async def settings_save(
+    request: Request,
+    auto_abuse_report: bool = Form(False),
+    auto_abuse_threshold: int = Form(8),
+    smtp_host: str = Form(""),
+    smtp_port: int = Form(587),
+    smtp_user: str = Form(""),
+    smtp_password: str = Form(""),
+    smtp_from: str = Form(""),
+):
+    runtime_settings.save_auto_report_settings(
+        auto_abuse_report=auto_abuse_report,
+        auto_abuse_threshold=auto_abuse_threshold,
+        smtp_host=smtp_host,
+        smtp_port=smtp_port,
+        smtp_user=smtp_user,
+        smtp_password=smtp_password or None,
+        smtp_from=smtp_from,
+    )
+    return templates.TemplateResponse(
+        request, "partials/settings_form.html",
+        {"cfg": runtime_settings.get_auto_report_settings(), "saved": True},
+    )
+
+
+@app.post("/settings/test")
+async def settings_test(
+    request: Request,
+    test_to: str = Form(""),
+    smtp_host: str = Form(""),
+    smtp_port: int = Form(587),
+    smtp_user: str = Form(""),
+    smtp_password: str = Form(""),
+    smtp_from: str = Form(""),
+):
+    """Sends a real test email using exactly what's currently typed in the
+    Settings form — deliberately independent of save_auto_report_settings(),
+    so someone can try credentials before committing to them. An empty
+    smtp_password field falls back to whatever's already saved/env-default
+    (same "leave blank to keep it" convention as Save), since retyping a
+    saved password just to test it would defeat the point of not
+    redisplaying it."""
+    if not test_to.strip():
+        return templates.TemplateResponse(
+            request, "partials/settings_test_result.html",
+            {"ok": False, "message": "Enter an email address to send the test to."},
+        )
+
+    current = runtime_settings.get_auto_report_settings()
+    cfg = mailer.SmtpConfig(
+        host=smtp_host or None,
+        port=smtp_port,
+        user=smtp_user or None,
+        password=smtp_password or current.smtp_password,
+        from_addr=smtp_from or None,
+    )
+    try:
+        await mailer.send_email(
+            cfg, test_to.strip(),
+            "npm-crowd-dash test email",
+            "This is a test email from npm-crowd-dash's Settings page.\n\n"
+            "If you got this, your SMTP settings work — you can save them now.",
+        )
+    except mailer.SmtpNotConfigured as exc:
+        return templates.TemplateResponse(
+            request, "partials/settings_test_result.html", {"ok": False, "message": str(exc)},
+        )
+    except Exception as exc:
+        log.exception("settings test email failed")
+        return templates.TemplateResponse(
+            request, "partials/settings_test_result.html",
+            {"ok": False, "message": f"Send failed: {exc}"},
+        )
+    return templates.TemplateResponse(
+        request, "partials/settings_test_result.html",
+        {"ok": True, "message": f"Test email sent to {test_to.strip()} — check your inbox."},
+    )

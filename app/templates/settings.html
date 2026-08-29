@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="stats-panel settings-panel">
+    <h2>Auto abuse-report</h2>
+    <p class="filter-hint">
+        Once enabled, the poller emails the network abuse contact for any IP
+        that crosses the threshold below — the same report the "Prepare
+        abuse report" button on the Bans/Stats pages builds manually, just
+        sent automatically. Each IP is only ever reported once. Saving here
+        overrides the AUTO_ABUSE_REPORT / SMTP_* environment variables;
+        leaving everything untouched keeps whatever those env vars say.
+    </p>
+    {% include "partials/settings_form.html" %}
+</div>
+{% endblock %}

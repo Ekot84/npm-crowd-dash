@@ -8,7 +8,7 @@ from datetime import datetime
 
 import httpx
 
-from . import abuse, db, mailer, reports
+from . import abuse, db, mailer, reports, runtime_settings
 from .config import settings
 from .crowdsec_client import CrowdSecClient
 
@@ -303,28 +303,36 @@ _auto_abuse_report_warned = False
 
 
 async def _check_auto_abuse_reports() -> None:
-    """Opt-in (AUTO_ABUSE_REPORT): once an IP crosses AUTO_ABUSE_THRESHOLD
-    bans, look up its network's abuse contact and email the same report the
-    "Prepare abuse report" button builds manually, then mark it sent so it's
-    never reported twice. A missing abuse email or a send failure just skips
-    that IP for this cycle — both get retried automatically next cycle since
+    """Opt-in (AUTO_ABUSE_REPORT, toggleable from the Settings page or the
+    env var of the same name — runtime_settings merges the two, DB-saved
+    values winning): once an IP crosses the configured threshold, look up
+    its network's abuse contact and email the same report the "Prepare
+    abuse report" button builds manually, then mark it sent so it's never
+    reported twice. A missing abuse email or a send failure just skips that
+    IP for this cycle — both get retried automatically next cycle since
     db.auto_report_candidates() only excludes IPs with status='sent'."""
     global _auto_abuse_report_warned
 
-    if not settings.auto_abuse_report:
+    cfg = runtime_settings.get_auto_report_settings()
+    if not cfg.auto_abuse_report:
         return
 
-    if not mailer.smtp_configured():
+    smtp_cfg = mailer.SmtpConfig(
+        host=cfg.smtp_host, port=cfg.smtp_port, user=cfg.smtp_user,
+        password=cfg.smtp_password, from_addr=cfg.smtp_from,
+    )
+    if not mailer.is_configured(smtp_cfg):
         if not _auto_abuse_report_warned:
             log.warning(
-                "AUTO_ABUSE_REPORT is enabled but SMTP_HOST/SMTP_USER/SMTP_PASSWORD/"
-                "SMTP_FROM aren't fully set — auto abuse reports are disabled until "
-                "they are (logged once)."
+                "Auto abuse report is enabled but SMTP host/user/password/from aren't "
+                "fully set (Settings page or SMTP_* env vars) — disabled until they are "
+                "(logged once)."
             )
             _auto_abuse_report_warned = True
         return
+    _auto_abuse_report_warned = False
 
-    for ip in db.auto_report_candidates(settings.auto_abuse_threshold):
+    for ip in db.auto_report_candidates(cfg.auto_abuse_threshold):
         summary = db.ip_summary(ip)
         if summary is None:
             continue
@@ -341,7 +349,7 @@ async def _check_auto_abuse_reports() -> None:
         report_text = reports.build_report_text(ip, summary)
         subject = reports.build_subject(ip)
         try:
-            await mailer.send_abuse_report_email(abuse_email, subject, report_text)
+            await mailer.send_email(smtp_cfg, abuse_email, subject, report_text)
         except Exception:
             log.exception("failed to send auto abuse report for %s to %s", ip, abuse_email)
             db.record_abuse_report(

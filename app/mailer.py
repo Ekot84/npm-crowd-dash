@@ -1,72 +1,88 @@
-"""Sends the automatic abuse report over SMTP. Deliberately stdlib-only
-(smtplib) rather than pulling in an async SMTP dependency — this fires at
-most a handful of times a day (once per newly-qualifying repeat offender),
-so a sync call run in a worker thread is simpler than adding a new
-dependency for something this infrequent."""
+"""Sends abuse-report email over SMTP. Deliberately stdlib-only (smtplib)
+rather than pulling in an async SMTP dependency — this fires at most a
+handful of times a day (once per newly-qualifying repeat offender, plus the
+occasional manual test send from the Settings page), so a sync call run in
+a worker thread is simpler than adding a new dependency for something this
+infrequent.
+
+Takes an explicit SmtpConfig rather than reading app.config.settings
+directly, so the same send path serves two different config sources: the
+real auto-report poller (config merged from runtime_settings, i.e. DB
+overrides falling back to env vars) and the Settings page's "send test
+email" button (config taken straight from the form as currently typed,
+which may not be saved yet)."""
 
 import asyncio
 import logging
 import smtplib
 import ssl
+from dataclasses import dataclass
 from email.message import EmailMessage
-
-from .config import settings
 
 log = logging.getLogger("mailer")
 
 
+@dataclass
+class SmtpConfig:
+    host: str | None
+    port: int
+    user: str | None
+    password: str | None
+    from_addr: str | None
+
+
 class SmtpNotConfigured(Exception):
-    """Raised when AUTO_ABUSE_REPORT is on but required SMTP settings are missing."""
+    """Raised when a send is attempted but the config is missing required fields."""
 
 
-def smtp_configured() -> bool:
+def is_configured(config: SmtpConfig) -> bool:
     try:
-        _require_smtp_settings()
+        _require(config)
         return True
     except SmtpNotConfigured:
         return False
 
 
-def _require_smtp_settings() -> None:
+def _require(config: SmtpConfig) -> None:
     missing = [
         name
         for name, value in (
-            ("SMTP_HOST", settings.smtp_host),
-            ("SMTP_USER", settings.smtp_user),
-            ("SMTP_PASSWORD", settings.smtp_password),
-            ("SMTP_FROM", settings.smtp_from),
+            ("host", config.host),
+            ("user", config.user),
+            ("password", config.password),
+            ("from address", config.from_addr),
         )
         if not value
     ]
     if missing:
-        raise SmtpNotConfigured(f"AUTO_ABUSE_REPORT is enabled but missing: {', '.join(missing)}")
+        raise SmtpNotConfigured(f"missing SMTP settings: {', '.join(missing)}")
 
 
-def _send_sync(recipient: str, subject: str, body: str) -> None:
+def _send_sync(config: SmtpConfig, recipient: str, subject: str, body: str) -> None:
     msg = EmailMessage()
     msg["Subject"] = subject
-    msg["From"] = settings.smtp_from
+    msg["From"] = config.from_addr
     msg["To"] = recipient
     msg.set_content(body)
 
     context = ssl.create_default_context()
-    if settings.smtp_port == 465:
+    if config.port == 465:
         # Implicit TLS from the start of the connection.
-        with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, context=context, timeout=30) as server:
-            server.login(settings.smtp_user, settings.smtp_password)
+        with smtplib.SMTP_SSL(config.host, config.port, context=context, timeout=30) as server:
+            server.login(config.user, config.password)
             server.send_message(msg)
     else:
         # Plain connection upgraded via STARTTLS (587 and most other ports).
-        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as server:
+        with smtplib.SMTP(config.host, config.port, timeout=30) as server:
             server.starttls(context=context)
-            server.login(settings.smtp_user, settings.smtp_password)
+            server.login(config.user, config.password)
             server.send_message(msg)
 
 
-async def send_abuse_report_email(recipient: str, subject: str, body: str) -> None:
-    """Raises SmtpNotConfigured or whatever smtplib/ssl raises on failure —
-    callers (poller._check_auto_abuse_reports) are responsible for catching,
-    logging, and recording the failure so a single bad send doesn't crash
-    the poll loop."""
-    _require_smtp_settings()
-    await asyncio.to_thread(_send_sync, recipient, subject, body)
+async def send_email(config: SmtpConfig, recipient: str, subject: str, body: str) -> None:
+    """Raises SmtpNotConfigured or whatever smtplib/ssl raises on failure.
+    Callers are responsible for catching, logging/reporting, and (for the
+    auto-report poller specifically) recording the failure so a single bad
+    send doesn't crash the poll loop."""
+    _require(config)
+    await asyncio.to_thread(_send_sync, config, recipient, subject, body)

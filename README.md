@@ -60,6 +60,15 @@ and skips it on future poll cycles. A send that fails (SMTP down, no abuse
 contact found that cycle, etc.) is retried on the next poll cycle rather
 than being given up on.
 
+Or configure it from the running dashboard instead of env vars: the
+**Settings** page has the same toggle, threshold and SMTP fields, plus a
+"Send test email" button that tries the credentials currently typed in
+(saved or not) so you can confirm they work before relying on them. Anything
+saved there overrides the env vars; leave it untouched and the env vars
+still apply exactly as before. Note there's no login on this dashboard, so
+anyone who can reach it on your network can see/change these settings —
+fine on a private LAN, worth keeping in mind if you ever expose it further.
+
 This is off by default: it sends real email to a third party on your
 behalf, so turning it on should be a deliberate choice, not something that
 happens by just running the container.

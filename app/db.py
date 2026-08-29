@@ -35,6 +35,11 @@ CREATE TABLE IF NOT EXISTS abuse_reports (
     recipient TEXT NOT NULL,
     status TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
 """
 
 
@@ -505,3 +510,29 @@ def record_abuse_report(ip: str, *, times_banned_at_send: int, recipient: str, s
             """,
             (ip, int(time.time()), times_banned_at_send, recipient, status),
         )
+
+
+def get_settings(keys: list[str]) -> dict[str, str | None]:
+    """Returns only the keys that have actually been saved (via the web UI's
+    Settings page) — a key absent from the result means "never saved, fall
+    back to the env-configured default", not "saved as empty"."""
+    if not keys:
+        return {}
+    placeholders = ",".join("?" for _ in keys)
+    with get_conn() as conn:
+        rows = conn.execute(
+            f"SELECT key, value FROM settings WHERE key IN ({placeholders})", keys
+        ).fetchall()
+    return {row["key"]: row["value"] for row in rows}
+
+
+def set_settings(values: dict[str, str]) -> None:
+    with get_conn() as conn:
+        for key, value in values.items():
+            conn.execute(
+                """
+                INSERT INTO settings (key, value) VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (key, value),
+            )

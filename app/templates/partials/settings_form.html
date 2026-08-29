@@ -1,0 +1,64 @@
+<div id="settings-wrap">
+    {% if saved %}
+    <p class="save-banner">Saved.</p>
+    {% endif %}
+
+    <form id="settings-form" class="settings-form"
+          hx-post="/settings/save"
+          hx-target="#settings-wrap"
+          hx-swap="outerHTML">
+        <div class="settings-row">
+            <label>
+                <input type="checkbox" name="auto_abuse_report" {{ 'checked' if cfg.auto_abuse_report else '' }}>
+                Automatically email abuse reports once an IP crosses the threshold
+            </label>
+        </div>
+        <div class="settings-row">
+            <label for="auto_abuse_threshold">Threshold (times banned)</label>
+            <input type="number" id="auto_abuse_threshold" name="auto_abuse_threshold" min="1"
+                   value="{{ cfg.auto_abuse_threshold }}">
+        </div>
+        <div class="settings-row">
+            <label for="smtp_host">SMTP host</label>
+            <input type="text" id="smtp_host" name="smtp_host" value="{{ cfg.smtp_host or '' }}"
+                   placeholder="smtp.example.com">
+        </div>
+        <div class="settings-row">
+            <label for="smtp_port">SMTP port</label>
+            <input type="number" id="smtp_port" name="smtp_port" value="{{ cfg.smtp_port }}">
+        </div>
+        <div class="settings-row">
+            <label for="smtp_user">SMTP user</label>
+            <input type="text" id="smtp_user" name="smtp_user" value="{{ cfg.smtp_user or '' }}">
+        </div>
+        <div class="settings-row">
+            <label for="smtp_password">SMTP password</label>
+            <input type="password" id="smtp_password" name="smtp_password"
+                   placeholder="{{ 'leave blank to keep the current password' if cfg.smtp_password else '' }}">
+        </div>
+        <div class="settings-row">
+            <label for="smtp_from">From address</label>
+            <input type="text" id="smtp_from" name="smtp_from" value="{{ cfg.smtp_from or '' }}"
+                   placeholder="noreply@example.com">
+        </div>
+        <button type="submit" class="pager-btn">Save</button>
+    </form>
+
+    {% if cfg.auto_abuse_report and not (cfg.smtp_host and cfg.smtp_user and cfg.smtp_password and cfg.smtp_from) %}
+    <p class="filter-hint settings-warning">Auto abuse-report is on, but SMTP isn't fully configured yet — reports won't send until every SMTP field above is filled in and saved.</p>
+    {% elif not cfg.auto_abuse_report %}
+    <p class="filter-hint">Fill in the SMTP fields above and send a test email before turning auto abuse-report on.</p>
+    {% endif %}
+
+    <div class="settings-test">
+        <input type="email" id="test-to" name="test_to" placeholder="you@example.com" aria-label="Send test email to">
+        <button type="button" class="pager-btn"
+                hx-post="/settings/test"
+                hx-include="#settings-form, #test-to"
+                hx-target="#test-result"
+                hx-swap="innerHTML">
+            Send test email
+        </button>
+        <div id="test-result"></div>
+    </div>
+</div>
