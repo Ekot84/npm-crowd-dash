@@ -25,5 +25,6 @@ services:
       SMTP_USER: "${SMTP_USER:-}"
       SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
       SMTP_FROM: "${SMTP_FROM:-}"
+      SETTINGS_SECRET_KEY: "${SETTINGS_SECRET_KEY:-}"
     volumes:
       - /mnt/user/appdata/npm-crowd-dash/data:/data

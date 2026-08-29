@@ -44,4 +44,5 @@ Setup:
   <Config Name="SMTP User" Target="SMTP_USER" Default="" Mode="" Description="Required if Auto Abuse Report is enabled." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <Config Name="SMTP Password" Target="SMTP_PASSWORD" Default="" Mode="" Description="Required if Auto Abuse Report is enabled." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
   <Config Name="SMTP From" Target="SMTP_FROM" Default="" Mode="" Description="Sender address for automatic abuse reports." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Settings Secret Key" Target="SETTINGS_SECRET_KEY" Default="" Mode="" Description="Optional: encryption key for the SMTP password saved via the Settings page. Leave blank and one is auto-generated and stored next to the database instead. Generate with: python3 -c &quot;from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())&quot;" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
 </Container>
