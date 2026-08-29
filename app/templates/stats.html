@@ -3,20 +3,20 @@
 <form class="filter-bar"
       hx-get="/partials/stats"
       hx-target="#stats-wrap"
-      hx-trigger="change from:select, load"
+      hx-trigger="change from:find select, load"
       hx-include="this">
     <select name="status">
         <option value="active">Active</option>
         <option value="expired">Expired</option>
         <option value="" selected>All</option>
     </select>
-    <span class="filter-hint">applies to country, source, scenario and hosting-provider breakdowns — repeat offenders below always cover full history</span>
+    <span class="filter-hint">applies to country, source, scenario and hosting-provider breakdowns — repeat offenders below has its own time-period filter instead (see that panel)</span>
 </form>
 
 <div id="stats-wrap"
      hx-get="/partials/stats"
      hx-trigger="every 30s"
-     hx-include=".filter-bar">
+     hx-include=".filter-bar, #repeat-offenders-period">
     Loading…
 </div>
 {% endblock %}

@@ -128,7 +128,7 @@ async def stats_page(request: Request):
 
 
 @app.get("/partials/stats")
-async def stats_partial(request: Request, status: str = ""):
+async def stats_partial(request: Request, status: str = "", period: str = ""):
     country_rows, country_has_prev, country_has_next = _paginate(
         db.stats_by_country(status=status, limit=_STATS_PAGE_SIZE), 0
     )
@@ -139,7 +139,7 @@ async def stats_partial(request: Request, status: str = ""):
         db.stats_by_as(status=status, limit=_STATS_PAGE_SIZE), 0
     )
     repeat_rows_raw, repeat_has_prev, repeat_has_next = _paginate(
-        db.stats_top_ips(limit=_STATS_PAGE_SIZE), 0
+        db.stats_top_ips(period=period, limit=_STATS_PAGE_SIZE), 0
     )
     repeat_rows = [dict(r) for r in repeat_rows_raw]
     for r in repeat_rows:
@@ -171,12 +171,15 @@ async def stats_partial(request: Request, status: str = ""):
             "repeat_offset": 0,
             "repeat_has_prev": repeat_has_prev,
             "repeat_has_next": repeat_has_next,
+            "period": period,
         },
     )
 
 
 @app.get("/partials/stats/panel")
-async def stats_panel(request: Request, kind: str, status: str = "", offset: int = 0):
+async def stats_panel(
+    request: Request, kind: str, status: str = "", offset: int = 0, period: str = ""
+):
     common = {
         "status": status,
         "offset": offset,
@@ -209,15 +212,18 @@ async def stats_panel(request: Request, kind: str, status: str = "", offset: int
             {**common, "rows": rows, "has_prev": has_prev, "has_next": has_next},
         )
     if kind == "repeat-offenders":
+        # Independent of `status` above (repeat offenders always cover both
+        # active and expired bans) — `period` is its own, separate filter
+        # local to this one panel, not shared with the other panels' status.
         raw, has_prev, has_next = _paginate(
-            db.stats_top_ips(limit=_STATS_PAGE_SIZE, offset=offset), offset
+            db.stats_top_ips(period=period, limit=_STATS_PAGE_SIZE, offset=offset), offset
         )
         rows = [dict(r) for r in raw]
         for r in rows:
             r["last_seen_str"] = _fmt_ts(r["last_seen"])
         return templates.TemplateResponse(
             request, "partials/stats_panel_repeat_offenders.html",
-            {**common, "rows": rows, "has_prev": has_prev, "has_next": has_next},
+            {**common, "rows": rows, "has_prev": has_prev, "has_next": has_next, "period": period},
         )
     return JSONResponse({"error": f"unknown kind: {kind}"}, status_code=400)
 

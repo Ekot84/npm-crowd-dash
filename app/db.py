@@ -233,27 +233,59 @@ def stats_by_country(status: str = "active", limit: int = 5, offset: int = 0) ->
         ).fetchall()
 
 
-def stats_top_ips(limit: int = 5, offset: int = 0) -> list[sqlite3.Row]:
-    """Repeat offenders across the whole history, regardless of current status.
+_REPEAT_OFFENDER_PERIOD_SECONDS = {
+    "24h": 24 * 60 * 60,
+    "7d": 7 * 24 * 60 * 60,
+    "30d": 30 * 24 * 60 * 60,
+}
+
+
+def _repeat_offender_period_cutoff(period: str) -> int | None:
+    """None means no cutoff (period is "all", empty, or unrecognized — same
+    thing, kept as the backward-compatible default)."""
+    seconds = _REPEAT_OFFENDER_PERIOD_SECONDS.get(period)
+    if seconds is None:
+        return None
+    return int(time.time()) - seconds
+
+
+def stats_top_ips(period: str = "all", limit: int = 5, offset: int = 0) -> list[sqlite3.Row]:
+    """Repeat offenders, regardless of current (active/expired) status.
     Excludes CAPI/lists/cscli-origin bans — those were never observed locally
     (proactively pushed down from CrowdSec's shared community blocklist), so
     they're not something you can act on the way a real repeat local offender
     is; including them would bury genuinely-local repeat offenders under
-    community-blocklist noise."""
+    community-blocklist noise.
+
+    period ("24h" / "7d" / "30d" / "all") scopes the *statistics themselves*,
+    not just which IPs are shown: times_banned, first_seen and last_seen are
+    all computed only from bans within the window, and the ranking follows
+    from that — an IP banned 20 times last year but once in the last 24h
+    shows up as "banned once" under the 24h filter, not "banned 20 times".
+    "all" (the default, used whenever no period is given) reproduces the
+    original unscoped behavior."""
+    cutoff = _repeat_offender_period_cutoff(period)
+    where = "WHERE (origin IS NULL OR origin = 'crowdsec')"
+    params: list = []
+    if cutoff is not None:
+        where += " AND created_at >= ?"
+        params.append(cutoff)
+    params.append(limit + 1)
+    params.append(offset)
     with get_conn() as conn:
         return conn.execute(
-            """
-            SELECT ip, COUNT(*) AS times_banned, MAX(country) AS country,
-                   MAX(as_name) AS as_name, MAX(is_cloud_host) AS is_cloud_host,
-                   MAX(created_at) AS last_seen
+            f"""
+            SELECT ip, COUNT(*) AS times_banned, MIN(created_at) AS first_seen,
+                   MAX(created_at) AS last_seen, MAX(country) AS country,
+                   MAX(as_name) AS as_name, MAX(is_cloud_host) AS is_cloud_host
             FROM bans
-            WHERE (origin IS NULL OR origin = 'crowdsec')
+            {where}
             GROUP BY ip
             HAVING COUNT(*) > 1
             ORDER BY times_banned DESC, last_seen DESC
             LIMIT ? OFFSET ?
             """,
-            (limit + 1, offset),
+            params,
         ).fetchall()
 
 

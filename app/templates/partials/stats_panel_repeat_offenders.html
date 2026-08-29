@@ -1,7 +1,20 @@
 <div id="panel-repeat-offenders"
-     hx-get="/partials/stats/panel?kind=repeat-offenders&offset={{ offset }}"
+     hx-get="/partials/stats/panel?kind=repeat-offenders&period={{ period }}&offset={{ offset }}"
      hx-trigger="every 30s"
      hx-swap="outerHTML">
+    <div class="filter-bar">
+        <select id="repeat-offenders-period" name="period"
+                hx-get="/partials/stats/panel?kind=repeat-offenders&offset=0"
+                hx-include="this"
+                hx-target="#panel-repeat-offenders"
+                hx-swap="outerHTML">
+            <option value="" {{ 'selected' if period not in ('24h', '7d', '30d') else '' }}>All time</option>
+            <option value="24h" {{ 'selected' if period == '24h' else '' }}>Last 24h</option>
+            <option value="7d" {{ 'selected' if period == '7d' else '' }}>Last 7 days</option>
+            <option value="30d" {{ 'selected' if period == '30d' else '' }}>Last 30 days</option>
+        </select>
+        <span class="filter-hint">times banned / last seen below are counted within this window only — independent of the Active/Expired filter above</span>
+    </div>
     <table class="stats-table">
         <thead><tr><th>IP</th><th>Times banned</th><th>Country</th><th>AS</th><th>Last seen</th></tr></thead>
         <tbody>
@@ -39,10 +52,10 @@
     {% if has_prev or has_next %}
     <div class="pager">
         <button type="button" class="pager-btn" {{ 'disabled' if not has_prev else '' }}
-                hx-get="/partials/stats/panel?kind=repeat-offenders&offset={{ [offset - page_size, 0] | max }}"
+                hx-get="/partials/stats/panel?kind=repeat-offenders&period={{ period }}&offset={{ [offset - page_size, 0] | max }}"
                 hx-target="#panel-repeat-offenders" hx-swap="outerHTML">←</button>
         <button type="button" class="pager-btn" {{ 'disabled' if not has_next else '' }}
-                hx-get="/partials/stats/panel?kind=repeat-offenders&offset={{ offset + page_size }}"
+                hx-get="/partials/stats/panel?kind=repeat-offenders&period={{ period }}&offset={{ offset + page_size }}"
                 hx-target="#panel-repeat-offenders" hx-swap="outerHTML">→</button>
     </div>
     {% endif %}
