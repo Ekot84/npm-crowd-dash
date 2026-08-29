@@ -51,7 +51,7 @@
 
     <div class="stats-panel stats-panel-wide">
         <h2>Repeat offenders</h2>
-        {% with rows=repeat_rows, offset=repeat_offset, has_prev=repeat_has_prev, has_next=repeat_has_next, period=period %}
+        {% with rows=repeat_rows, offset=repeat_offset, has_prev=repeat_has_prev, has_next=repeat_has_next, period=period, retention_days=retention_days %}
         {% include "partials/stats_panel_repeat_offenders.html" %}
         {% endwith %}
     </div>

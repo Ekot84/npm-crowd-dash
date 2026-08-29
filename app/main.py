@@ -172,6 +172,7 @@ async def stats_partial(request: Request, status: str = "", period: str = ""):
             "repeat_has_prev": repeat_has_prev,
             "repeat_has_next": repeat_has_next,
             "period": period,
+            "retention_days": settings.retention_days,
         },
     )
 
@@ -223,7 +224,10 @@ async def stats_panel(
             r["last_seen_str"] = _fmt_ts(r["last_seen"])
         return templates.TemplateResponse(
             request, "partials/stats_panel_repeat_offenders.html",
-            {**common, "rows": rows, "has_prev": has_prev, "has_next": has_next, "period": period},
+            {
+                **common, "rows": rows, "has_prev": has_prev, "has_next": has_next,
+                "period": period, "retention_days": settings.retention_days,
+            },
         )
     return JSONResponse({"error": f"unknown kind: {kind}"}, status_code=400)
 

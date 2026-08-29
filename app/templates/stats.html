@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<form class="filter-bar"
+<form id="status-filter" class="filter-bar"
       hx-get="/partials/stats"
       hx-target="#stats-wrap"
       hx-trigger="change from:find select, load"
@@ -16,7 +16,7 @@
 <div id="stats-wrap"
      hx-get="/partials/stats"
      hx-trigger="every 30s"
-     hx-include=".filter-bar, #repeat-offenders-period">
+     hx-include="#status-filter, #repeat-offenders-period">
     Loading…
 </div>
 {% endblock %}

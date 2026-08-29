@@ -8,12 +8,12 @@
                 hx-include="this"
                 hx-target="#panel-repeat-offenders"
                 hx-swap="outerHTML">
-            <option value="" {{ 'selected' if period not in ('24h', '7d', '30d') else '' }}>All time</option>
+            <option value="" {{ 'selected' if period not in ('24h', '7d', '30d') else '' }}>All (retained history)</option>
             <option value="24h" {{ 'selected' if period == '24h' else '' }}>Last 24h</option>
             <option value="7d" {{ 'selected' if period == '7d' else '' }}>Last 7 days</option>
             <option value="30d" {{ 'selected' if period == '30d' else '' }}>Last 30 days</option>
         </select>
-        <span class="filter-hint">times banned / last seen below are counted within this window only — independent of the Active/Expired filter above</span>
+        <span class="filter-hint">times banned / last seen below are counted within this window only — independent of the Active/Expired filter above. "All" means everything still kept locally, not literal full history: expired/revoked bans older than {{ retention_days }} days are pruned automatically (see RETENTION_DAYS).</span>
     </div>
     <table class="stats-table">
         <thead><tr><th>IP</th><th>Times banned</th><th>Country</th><th>AS</th><th>Last seen</th></tr></thead>
