@@ -55,6 +55,16 @@ def _decrypt_stored_password(stored: dict[str, str | None]) -> str | None:
     raw = stored.get("smtp_password")
     if not raw:
         return raw
+    if not secrets_store.is_key_configured():
+        # No SETTINGS_SECRET_KEY -> nothing new can ever be saved this way
+        # (see save_auto_report_settings), so a value only ends up here from
+        # an old pre-release install that had the now-removed auto-generated
+        # key-file fallback. Not worth migrating (this feature never
+        # shipped), and re-encrypting is impossible without a key anyway —
+        # hand back the raw value rather than raising, so the rest of the
+        # app keeps working; it just won't work as a real password until a
+        # key is configured.
+        return raw
     plaintext, was_encrypted = secrets_store.try_decrypt_password(raw)
     if not was_encrypted:
         # Plaintext password saved by a pre-encryption version of this app —
@@ -95,13 +105,19 @@ def save_auto_report_settings(
     smtp_user: str,
     smtp_password: str | None,
     smtp_from: str,
-) -> None:
+) -> bool:
     """smtp_password=None (or "") means "leave whatever's already saved (or
     the env default) unchanged" — the Settings form never redisplays the
     real saved password in the browser, so it can't submit it back on every
-    resave; only a non-empty typed value overwrites it. Whatever value does
-    get saved is encrypted at rest (see secrets_store.py) — the caller
-    always passes the plaintext as typed, never anything pre-encrypted."""
+    resave; only a non-empty typed value overwrites it.
+
+    A non-empty smtp_password can only be saved when SETTINGS_SECRET_KEY is
+    configured (see secrets_store.py) — there is no weaker fallback to fall
+    back to. If a password was submitted but no key is configured, it's
+    silently dropped from this save (every other field still saves
+    normally) and the return value is True so the caller (the /settings/save
+    route) can tell the user their password specifically wasn't saved and
+    why, rather than the save just quietly not doing what they asked."""
     values = {
         "auto_abuse_report": "true" if auto_abuse_report else "false",
         "auto_abuse_threshold": str(auto_abuse_threshold),
@@ -110,6 +126,11 @@ def save_auto_report_settings(
         "smtp_user": smtp_user,
         "smtp_from": smtp_from,
     }
+    password_rejected = False
     if smtp_password:
-        values["smtp_password"] = secrets_store.encrypt_password(smtp_password)
+        if secrets_store.is_key_configured():
+            values["smtp_password"] = secrets_store.encrypt_password(smtp_password)
+        else:
+            password_rejected = True
     db.set_settings(values)
+    return password_rejected

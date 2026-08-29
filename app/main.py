@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import abuse, db, mailer, poller, reports, runtime_settings
+from . import abuse, db, mailer, poller, reports, runtime_settings, secrets_store
 from .config import settings
 from .poller import poll_forever
 
@@ -290,7 +290,13 @@ async def api_bans(
 async def settings_page(request: Request):
     return templates.TemplateResponse(
         request, "settings.html",
-        {"active_page": "settings", "cfg": runtime_settings.get_auto_report_settings(), "saved": False},
+        {
+            "active_page": "settings",
+            "cfg": runtime_settings.get_auto_report_settings(),
+            "saved": False,
+            "password_rejected": False,
+            "key_configured": secrets_store.is_key_configured(),
+        },
     )
 
 
@@ -305,7 +311,7 @@ async def settings_save(
     smtp_password: str = Form(""),
     smtp_from: str = Form(""),
 ):
-    runtime_settings.save_auto_report_settings(
+    password_rejected = runtime_settings.save_auto_report_settings(
         auto_abuse_report=auto_abuse_report,
         auto_abuse_threshold=auto_abuse_threshold,
         smtp_host=smtp_host,
@@ -316,7 +322,12 @@ async def settings_save(
     )
     return templates.TemplateResponse(
         request, "partials/settings_form.html",
-        {"cfg": runtime_settings.get_auto_report_settings(), "saved": True},
+        {
+            "cfg": runtime_settings.get_auto_report_settings(),
+            "saved": True,
+            "password_rejected": password_rejected,
+            "key_configured": secrets_store.is_key_configured(),
+        },
     )
 
 

@@ -25,6 +25,9 @@ services:
       SMTP_USER: "${SMTP_USER:-}"
       SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
       SMTP_FROM: "${SMTP_FROM:-}"
+      # Required to save an SMTP password via the Settings page in the web
+      # UI — see .env.example. Leave unset and the dashboard still runs
+      # normally; it just can't store a new SMTP password until this is set.
       SETTINGS_SECRET_KEY: "${SETTINGS_SECRET_KEY:-}"
     volumes:
       - /mnt/user/appdata/npm-crowd-dash/data:/data

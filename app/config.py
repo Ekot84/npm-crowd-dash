@@ -26,13 +26,15 @@ class Settings(BaseSettings):
     smtp_password: str | None = None
     smtp_from: str | None = None
 
-    # Optional: encrypts the SMTP password when it's saved to SQLite via the
-    # Settings page (see app/secrets_store.py). Must be a valid Fernet key
-    # (44 url-safe-base64 chars) if set — generate one with:
+    # Required to save an SMTP password via the Settings page in the web UI
+    # (see app/secrets_store.py) — that's the only thing this key gates.
+    # Must be a valid Fernet key (44 url-safe-base64 chars) — generate one
+    # with:
     #   python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-    # Unset by default: a key is instead auto-generated on first run and
-    # persisted next to the database (still encrypted at rest, just with a
-    # key that isn't kept separately from it — see secrets_store.py).
+    # Unset by default, and deliberately with no auto-generated fallback: if
+    # it's not set, the Settings page still loads and everything else in the
+    # dashboard works normally, but the SMTP password field is disabled and
+    # a new password can't be saved until this is configured.
     settings_secret_key: str | None = None
 
 

@@ -70,13 +70,16 @@ anyone who can reach it on your network can see/change these settings —
 fine on a private LAN, worth keeping in mind if you ever expose it further.
 
 A password saved via the Settings page is encrypted before it's written to
-SQLite (not stored as plain text in the database), using a key that's
-auto-generated on first run and kept next to the database — zero extra
-config needed. That protects the database file on its own (a stray backup,
-a debug share, opening it in a SQLite browser), but not a full copy of the
-whole `/data` volume, since the key lives there too. Set `SETTINGS_SECRET_KEY`
-(see `.env.example` for how to generate one) to keep the key out of `/data`
-entirely if that distinction matters for your backups.
+SQLite (not stored as plain text in the database), but that requires an
+encryption key: set `SETTINGS_SECRET_KEY` (see `.env.example` for how to
+generate one) before saving one there. There's no auto-generated fallback
+key — a key that's created and stored automatically next to the database
+would just travel along with it in any backup or copy of `/data`, defeating
+the point. If `SETTINGS_SECRET_KEY` isn't set, the rest of the dashboard
+still starts and works normally; the Settings page shows the SMTP password
+field disabled with an explanation, and refuses to save a new password
+until the key is configured. Setting it is a one-time step — generate the
+key, set the env var, restart the container.
 
 This is off by default: it sends real email to a third party on your
 behalf, so turning it on should be a deliberate choice, not something that

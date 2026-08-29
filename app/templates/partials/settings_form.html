@@ -1,5 +1,7 @@
 <div id="settings-wrap">
-    {% if saved %}
+    {% if saved and password_rejected %}
+    <p class="settings-warning">Settings saved — except the SMTP password: no encryption key is configured, see below.</p>
+    {% elif saved %}
     <p class="save-banner">Saved.</p>
     {% endif %}
 
@@ -33,8 +35,19 @@
         </div>
         <div class="settings-row">
             <label for="smtp_password">SMTP password</label>
+            {% if key_configured %}
             <input type="password" id="smtp_password" name="smtp_password"
                    placeholder="{{ 'leave blank to keep the current password' if cfg.smtp_password else '' }}">
+            {% else %}
+            <input type="password" id="smtp_password" name="smtp_password" disabled
+                   placeholder="requires an encryption key, see below">
+            <p class="filter-hint settings-warning">
+                SMTP password storage requires an encryption key. Set the
+                <code>SETTINGS_SECRET_KEY</code> environment variable (see
+                <code>.env.example</code>) and restart the container, then
+                come back here to save a password.
+            </p>
+            {% endif %}
         </div>
         <div class="settings-row">
             <label for="smtp_from">From address</label>
