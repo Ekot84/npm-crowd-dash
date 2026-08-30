@@ -23,6 +23,9 @@
             <a href="/bans" class="{{ 'active' if active_page == 'bans' else '' }}">Bans
                 <span id="bans-count" hx-get="/partials/bans-count" hx-trigger="load, every 10s" hx-swap="innerHTML">(…)</span>
             </a>
+            <a href="/reports" class="{{ 'active' if active_page == 'reports' else '' }}">Reports
+                <span id="reports-count" hx-get="/partials/reports-count" hx-trigger="load, every 30s" hx-swap="innerHTML">(…)</span>
+            </a>
             <a href="/settings" class="{{ 'active' if active_page == 'settings' else '' }}">Settings</a>
         </nav>
     </header>

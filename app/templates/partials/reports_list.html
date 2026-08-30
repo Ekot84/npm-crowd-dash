@@ -1,0 +1,70 @@
+<div id="reports-wrap" class="reports-panels">
+    {% if message %}
+    <p class="{{ 'save-banner' if message_ok else 'settings-warning' }}">{{ message }}</p>
+    {% endif %}
+
+    <div class="stats-panel">
+        <div class="panel-heading">
+            <h2>Pending reports</h2>
+            <button type="button" class="pager-btn"
+                    hx-get="/partials/reports" hx-target="#reports-wrap" hx-swap="outerHTML">
+                ↻ Refresh
+            </button>
+        </div>
+        <p class="filter-hint">
+            Repeat offenders banned {{ repeat_offender_threshold }}+ times that
+            don't have a successfully sent abuse report on file yet. Nothing is
+            emailed automatically — review the recipient and text, then send.
+            Once a report is marked "sent" below, that IP won't show up here
+            again, so the same IP is never reported twice by mistake. This list
+            doesn't auto-refresh (so it won't interrupt a review you have open)
+            — use Refresh to pick up newly-qualifying IPs.
+        </p>
+        <table class="stats-table">
+            <thead><tr><th>IP</th><th>Times banned</th><th>Last seen</th><th></th></tr></thead>
+            <tbody>
+                {% for row in candidates %}
+                <tr>
+                    <td class="mono">{{ row.ip }}</td>
+                    <td class="mono">{{ row.times_banned }}</td>
+                    <td class="mono">{{ row.last_seen_str }}</td>
+                    <td>
+                        <button type="button" class="pager-btn"
+                                hx-get="/partials/reports/review?ip={{ row.ip }}"
+                                hx-target="#review-{{ row.ip | replace('.', '_') }}"
+                                hx-swap="innerHTML">
+                            Review &amp; send
+                        </button>
+                    </td>
+                </tr>
+                <tr class="hint-row">
+                    <td colspan="4"><div id="review-{{ row.ip | replace('.', '_') }}"></div></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" class="empty">Nothing waiting to be reported.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="stats-panel">
+        <h2>Report history</h2>
+        <p class="filter-hint">Every report sent (or attempted) from this page, newest first.</p>
+        <table class="stats-table">
+            <thead><tr><th>IP</th><th>Sent</th><th>Times banned</th><th>Recipient</th><th>Status</th></tr></thead>
+            <tbody>
+                {% for row in history %}
+                <tr>
+                    <td class="mono">{{ row.ip }}</td>
+                    <td class="mono">{{ row.sent_at_str }}</td>
+                    <td class="mono">{{ row.times_banned_at_send }}</td>
+                    <td>{{ row.recipient }}</td>
+                    <td><span class="pill {{ 'pill-active' if row.status == 'sent' else 'pill-expired' }}">{{ row.status }}</span></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="empty">No reports sent yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>

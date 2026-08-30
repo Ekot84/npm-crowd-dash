@@ -1,15 +1,15 @@
-"""Runtime-editable auto abuse-report settings, backed by the `settings`
-key/value table in SQLite (see db.py) instead of the env-only Settings in
-config.py.
+"""Runtime-editable SMTP settings, backed by the `settings` key/value table
+in SQLite (see db.py) instead of the env-only Settings in config.py.
 
-Design: env vars (AUTO_ABUSE_REPORT, SMTP_HOST, ...) stay the *default* —
-anyone deploying via docker-compose/.env only, the way the feature originally
-shipped, sees no change at all. The Settings page in the web UI lets someone
-override any of these seven fields at runtime; once a field is saved there,
-it wins over the env value until changed again (or the row is deleted, which
-this app never does automatically). Nothing here talks to CrowdSec or
-changes ban behavior — this only affects whether/how the auto abuse-report
-poller check (poller._check_auto_abuse_reports) sends email.
+Design: env vars (SMTP_HOST, ...) stay the *default* — anyone deploying via
+docker-compose/.env only sees no change at all. The Settings page in the web
+UI lets someone override any of these five fields at runtime; once a field
+is saved there, it wins over the env value until changed again (or the row
+is deleted, which this app never does automatically). Nothing here talks to
+CrowdSec or changes ban behavior — this only supplies the SMTP config used
+when someone sends a report from the Reports page (main.py's /reports/send
+route). Sending only ever happens on that explicit action, never on a timer
+or poll cycle — there is no automatic abuse-report sending in this app.
 """
 
 from dataclasses import dataclass, field
@@ -18,8 +18,6 @@ from . import db, secrets_store
 from .config import settings as env_settings
 
 _KEYS = (
-    "auto_abuse_report",
-    "auto_abuse_threshold",
     "smtp_host",
     "smtp_port",
     "smtp_user",
@@ -29,9 +27,7 @@ _KEYS = (
 
 
 @dataclass
-class AutoReportSettings:
-    auto_abuse_report: bool
-    auto_abuse_threshold: int
+class SmtpSettings:
     smtp_host: str | None
     smtp_port: int
     smtp_user: str | None
@@ -43,13 +39,9 @@ class AutoReportSettings:
     from_db: set[str] = field(default_factory=set)
 
 
-def _to_bool(value: str) -> bool:
-    return value.strip().lower() in ("1", "true", "yes", "on")
-
-
 def _decrypt_stored_password(stored: dict[str, str | None]) -> str | None:
     """None means "nothing saved in the DB for this key at all" (fall back to
-    the env default, handled by the pick() in get_auto_report_settings()).
+    the env default, handled by the pick() in get_smtp_settings()).
     A saved-but-empty string (an explicitly cleared password) stays "" as-is
     — only a genuinely present, non-empty value goes through decryption."""
     raw = stored.get("smtp_password")
@@ -57,8 +49,8 @@ def _decrypt_stored_password(stored: dict[str, str | None]) -> str | None:
         return raw
     if not secrets_store.is_key_configured():
         # No SETTINGS_SECRET_KEY -> nothing new can ever be saved this way
-        # (see save_auto_report_settings), so a value only ends up here from
-        # an old pre-release install that had the now-removed auto-generated
+        # (see save_smtp_settings), so a value only ends up here from an old
+        # pre-release install that had the now-removed auto-generated
         # key-file fallback. Not worth migrating (this feature never
         # shipped), and re-encrypting is impossible without a key anyway —
         # hand back the raw value rather than raising, so the rest of the
@@ -73,7 +65,7 @@ def _decrypt_stored_password(stored: dict[str, str | None]) -> str | None:
     return plaintext
 
 
-def get_auto_report_settings() -> AutoReportSettings:
+def get_smtp_settings() -> SmtpSettings:
     stored = db.get_settings(list(_KEYS))
 
     def pick(key: str, env_default):
@@ -84,9 +76,7 @@ def get_auto_report_settings() -> AutoReportSettings:
         _decrypt_stored_password(stored) if "smtp_password" in stored else env_settings.smtp_password
     )
 
-    return AutoReportSettings(
-        auto_abuse_report=_to_bool(pick("auto_abuse_report", "true" if env_settings.auto_abuse_report else "false")),
-        auto_abuse_threshold=int(pick("auto_abuse_threshold", str(env_settings.auto_abuse_threshold))),
+    return SmtpSettings(
         smtp_host=pick("smtp_host", env_settings.smtp_host),
         smtp_port=int(pick("smtp_port", str(env_settings.smtp_port))),
         smtp_user=pick("smtp_user", env_settings.smtp_user),
@@ -96,10 +86,8 @@ def get_auto_report_settings() -> AutoReportSettings:
     )
 
 
-def save_auto_report_settings(
+def save_smtp_settings(
     *,
-    auto_abuse_report: bool,
-    auto_abuse_threshold: int,
     smtp_host: str,
     smtp_port: int,
     smtp_user: str,
@@ -119,8 +107,6 @@ def save_auto_report_settings(
     route) can tell the user their password specifically wasn't saved and
     why, rather than the save just quietly not doing what they asked."""
     values = {
-        "auto_abuse_report": "true" if auto_abuse_report else "false",
-        "auto_abuse_threshold": str(auto_abuse_threshold),
         "smtp_host": smtp_host,
         "smtp_port": str(smtp_port),
         "smtp_user": smtp_user,

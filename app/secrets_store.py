@@ -11,7 +11,7 @@ whatever it protects — a copy of the whole /data volume gets both, which
 defeats the point for anyone who cares about that distinction. The key now
 comes ONLY from the SETTINGS_SECRET_KEY env var. No key configured means no
 password can be encrypted, so the Settings page simply refuses to save one
-(see runtime_settings.save_auto_report_settings) rather than falling back
+(see runtime_settings.save_smtp_settings) rather than falling back
 to something weaker. Everything else in the app is unaffected either way —
 this only gates the one write path for the SMTP password.
 """
@@ -42,7 +42,7 @@ def _get_fernet() -> Fernet:
 
 def encrypt_password(plaintext: str) -> str:
     """Raises KeyNotConfigured if SETTINGS_SECRET_KEY isn't set — callers
-    (runtime_settings.save_auto_report_settings) are expected to check
+    (runtime_settings.save_smtp_settings) are expected to check
     is_key_configured() first and skip saving instead of calling this."""
     return _get_fernet().encrypt(plaintext.encode()).decode()
 

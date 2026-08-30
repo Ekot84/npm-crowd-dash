@@ -1,7 +1,8 @@
-"""Builds the plain-text abuse report and mailto link shared by the manual
-"Prepare abuse report" button (main.py) and the automatic SMTP sender
-(poller.py, when AUTO_ABUSE_REPORT is enabled) — one report format, whether
-it ends up in the user's mail client or sent straight over SMTP."""
+"""Builds the plain-text abuse report and mailto link shared by the quick
+"Prepare abuse report" mailto button on the Stats page and the tracked,
+review-before-send flow on the Reports page (main.py) — one report format,
+whether it ends up in the user's own mail client or is sent straight over
+SMTP after being reviewed."""
 
 import time
 from urllib.parse import quote

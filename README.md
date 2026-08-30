@@ -44,30 +44,35 @@ On Unraid without Compose: build the image once (`docker build -t
 npm-crowd-dash .`), then add it as a container manually via "Add Container",
 using the same env vars and a `/data` volume mapping as in `docker-compose.yml`.
 
-## Optional: automatic abuse reports
+## Abuse reports
 
-By default, reporting an abusive IP to its network's abuse contact is a
-manual step: the "Prepare abuse report" button on an IP's history does an
-RDAP lookup and builds a pre-filled `mailto:` link for you to send yourself.
+Reporting an abusive IP to its network's abuse contact is always a manual,
+reviewed step — nothing is ever emailed automatically. Two ways to do it:
 
-Set `AUTO_ABUSE_REPORT=true` (plus `SMTP_HOST`, `SMTP_USER`,
-`SMTP_PASSWORD`, `SMTP_FROM`, and optionally `SMTP_PORT` /
-`AUTO_ABUSE_THRESHOLD`, see `.env.example`) to have the app send that same
-report itself over SMTP once an IP reaches `AUTO_ABUSE_THRESHOLD` bans (default
-8), without anyone clicking anything. Each IP is only ever auto-reported
-once — the app records a `sent` row for it in its own `abuse_reports` table
-and skips it on future poll cycles. A send that fails (SMTP down, no abuse
-contact found that cycle, etc.) is retried on the next poll cycle rather
-than being given up on.
+- The "Prepare abuse report" button on an IP's history (Stats page) does an
+  RDAP lookup and builds a pre-filled `mailto:` link for you to send from
+  your own mail client. Quick, but untracked — it doesn't remember whether
+  you already reported that IP.
+- The **Reports** page lists every repeat offender (banned
+  `REPEAT_OFFENDER_THRESHOLD`+ times) that doesn't have a successfully sent
+  report on file yet. Click "Review & send" on an IP to see the RDAP-looked-up
+  recipient and pre-filled report text, edit either if needed, and send it
+  for real over SMTP — right from the dashboard. Once a report sends
+  successfully it's recorded and that IP drops off the pending list for
+  good, so the same IP is never reported twice by mistake. A failed send
+  (SMTP down, wrong recipient, etc.) is recorded too, so it stays visible in
+  the history and can be retried, but doesn't block anything.
 
-Or configure it from the running dashboard instead of env vars: the
-**Settings** page has the same toggle, threshold and SMTP fields, plus a
-"Send test email" button that tries the credentials currently typed in
-(saved or not) so you can confirm they work before relying on them. Anything
-saved there overrides the env vars; leave it untouched and the env vars
-still apply exactly as before. Note there's no login on this dashboard, so
-anyone who can reach it on your network can see/change these settings —
-fine on a private LAN, worth keeping in mind if you ever expose it further.
+Sending from the Reports page needs SMTP configured: set `SMTP_HOST`,
+`SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` (and optionally `SMTP_PORT`, see
+`.env.example`), or fill in the same fields on the **Settings** page — which
+also has a "Send test email" button that tries the credentials currently
+typed in (saved or not), so you can confirm they work before relying on
+them. Anything saved on Settings overrides the env vars; leave it untouched
+and the env vars apply as-is. Note there's no login on this dashboard, so
+anyone who can reach it on your network can see/change these settings and
+send reports — fine on a private LAN, worth keeping in mind if you ever
+expose it further.
 
 A password saved via the Settings page is encrypted before it's written to
 SQLite (not stored as plain text in the database), but that requires an
@@ -80,10 +85,6 @@ still starts and works normally; the Settings page shows the SMTP password
 field disabled with an explanation, and refuses to save a new password
 until the key is configured. Setting it is a one-time step — generate the
 key, set the env var, restart the container.
-
-This is off by default: it sends real email to a third party on your
-behalf, so turning it on should be a deliberate choice, not something that
-happens by just running the container.
 
 ## Notes
 

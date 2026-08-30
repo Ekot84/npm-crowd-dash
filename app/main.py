@@ -23,6 +23,8 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 _stop_event = asyncio.Event()
 
 _STATS_PAGE_SIZE = 5
+_REPORTS_CANDIDATES_LIMIT = 50
+_REPORTS_HISTORY_LIMIT = 50
 
 
 @asynccontextmanager
@@ -232,6 +234,122 @@ async def stats_panel(
     return JSONResponse({"error": f"unknown kind: {kind}"}, status_code=400)
 
 
+def _reports_context(*, message: str | None = None, message_ok: bool = True) -> dict:
+    candidates = db.report_candidates(settings.repeat_offender_threshold, limit=_REPORTS_CANDIDATES_LIMIT)
+    for row in candidates:
+        row["last_seen_str"] = _fmt_ts(row["last_seen"])
+
+    history = [dict(r) for r in db.report_history(limit=_REPORTS_HISTORY_LIMIT)]
+    for row in history:
+        row["sent_at_str"] = _fmt_ts(row["sent_at"])
+
+    return {
+        "candidates": candidates,
+        "history": history,
+        "repeat_offender_threshold": settings.repeat_offender_threshold,
+        "message": message,
+        "message_ok": message_ok,
+    }
+
+
+@app.get("/reports")
+async def reports_page(request: Request):
+    return templates.TemplateResponse(request, "reports.html", {"active_page": "reports"})
+
+
+@app.get("/partials/reports-count")
+async def reports_count_partial(request: Request):
+    count = len(db.report_candidates(settings.repeat_offender_threshold, limit=_REPORTS_CANDIDATES_LIMIT))
+    return templates.TemplateResponse(request, "partials/reports_count.html", {"count": count})
+
+
+@app.get("/partials/reports")
+async def reports_partial(request: Request):
+    return templates.TemplateResponse(request, "partials/reports_list.html", _reports_context())
+
+
+@app.get("/partials/reports/review")
+async def reports_review_partial(request: Request, ip: str):
+    try:
+        ipaddress.ip_address(ip)
+    except ValueError:
+        return JSONResponse({"error": "invalid ip"}, status_code=400)
+
+    summary = db.ip_summary(ip)
+    if summary is None:
+        return JSONResponse({"error": "no ban history for this ip"}, status_code=404)
+
+    abuse_email = await abuse.lookup_abuse_email(ip)
+    return templates.TemplateResponse(
+        request,
+        "partials/report_review.html",
+        {
+            "ip": ip,
+            "abuse_email": abuse_email,
+            "subject": reports.build_subject(ip),
+            "report_text": reports.build_report_text(ip, summary),
+        },
+    )
+
+
+@app.post("/reports/send")
+async def reports_send(
+    request: Request,
+    ip: str = Form(...),
+    recipient: str = Form(...),
+    subject: str = Form(...),
+    body: str = Form(...),
+):
+    """The only place this app ever actually sends an abuse report — always
+    a direct result of someone reviewing the recipient/text on the Reports
+    page and clicking "Send report", never automatic. On success the IP is
+    recorded as sent (see db.record_abuse_report) so it drops out of the
+    pending list and can't be double-reported by accident; on failure it's
+    recorded as 'failed' so it stays reportable and the failure is visible
+    in the history below, but doesn't silently block a retry."""
+    try:
+        ipaddress.ip_address(ip)
+    except ValueError:
+        return templates.TemplateResponse(
+            request, "partials/reports_list.html",
+            _reports_context(message="Invalid IP address.", message_ok=False),
+        )
+
+    recipient = recipient.strip()
+    if not recipient:
+        return templates.TemplateResponse(
+            request, "partials/reports_list.html",
+            _reports_context(
+                message=f"Enter a recipient address before sending the report for {ip}.",
+                message_ok=False,
+            ),
+        )
+
+    summary = db.ip_summary(ip)
+    times_banned = summary["times_banned"] if summary else 0
+
+    cfg = runtime_settings.get_smtp_settings()
+    smtp_cfg = mailer.SmtpConfig(
+        host=cfg.smtp_host, port=cfg.smtp_port, user=cfg.smtp_user,
+        password=cfg.smtp_password, from_addr=cfg.smtp_from,
+    )
+    try:
+        await mailer.send_email(smtp_cfg, recipient, subject, body)
+    except Exception as exc:
+        log.exception("abuse report send failed for %s", ip)
+        db.record_abuse_report(ip, times_banned_at_send=times_banned, recipient=recipient, status="failed")
+        return templates.TemplateResponse(
+            request, "partials/reports_list.html",
+            _reports_context(message=f"Failed to send report for {ip} to {recipient}: {exc}", message_ok=False),
+        )
+
+    db.record_abuse_report(ip, times_banned_at_send=times_banned, recipient=recipient, status="sent")
+    return templates.TemplateResponse(
+        request, "partials/reports_list.html",
+        _reports_context(message=f"Report for {ip} sent to {recipient}."),
+    )
+
+
 @app.get("/partials/abuse-report")
 async def abuse_report_partial(request: Request, ip: str):
     try:
@@ -292,7 +410,7 @@ async def settings_page(request: Request):
         request, "settings.html",
         {
             "active_page": "settings",
-            "cfg": runtime_settings.get_auto_report_settings(),
+            "cfg": runtime_settings.get_smtp_settings(),
             "saved": False,
             "password_rejected": False,
             "key_configured": secrets_store.is_key_configured(),
@@ -303,17 +421,13 @@ async def settings_page(request: Request):
 @app.post("/settings/save")
 async def settings_save(
     request: Request,
-    auto_abuse_report: bool = Form(False),
-    auto_abuse_threshold: int = Form(8),
     smtp_host: str = Form(""),
     smtp_port: int = Form(587),
     smtp_user: str = Form(""),
     smtp_password: str = Form(""),
     smtp_from: str = Form(""),
 ):
-    password_rejected = runtime_settings.save_auto_report_settings(
-        auto_abuse_report=auto_abuse_report,
-        auto_abuse_threshold=auto_abuse_threshold,
+    password_rejected = runtime_settings.save_smtp_settings(
         smtp_host=smtp_host,
         smtp_port=smtp_port,
         smtp_user=smtp_user,
@@ -323,7 +437,7 @@ async def settings_save(
     return templates.TemplateResponse(
         request, "partials/settings_form.html",
         {
-            "cfg": runtime_settings.get_auto_report_settings(),
+            "cfg": runtime_settings.get_smtp_settings(),
             "saved": True,
             "password_rejected": password_rejected,
             "key_configured": secrets_store.is_key_configured(),
@@ -342,8 +456,8 @@ async def settings_test(
     smtp_from: str = Form(""),
 ):
     """Sends a real test email using exactly what's currently typed in the
-    Settings form — deliberately independent of save_auto_report_settings(),
-    so someone can try credentials before committing to them. An empty
+    Settings form — deliberately independent of save_smtp_settings(), so
+    someone can try credentials before committing to them. An empty
     smtp_password field falls back to whatever's already saved/env-default
     (same "leave blank to keep it" convention as Save), since retyping a
     saved password just to test it would defeat the point of not
@@ -354,7 +468,7 @@ async def settings_test(
             {"ok": False, "message": "Enter an email address to send the test to."},
         )
 
-    current = runtime_settings.get_auto_report_settings()
+    current = runtime_settings.get_smtp_settings()
     cfg = mailer.SmtpConfig(
         host=smtp_host or None,
         port=smtp_port,

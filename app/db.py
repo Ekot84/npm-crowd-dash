@@ -63,10 +63,11 @@ def init_db() -> None:
             conn.execute("ALTER TABLE bans ADD COLUMN matched_rule TEXT")
         if "is_cloud_host" not in cols:
             conn.execute("ALTER TABLE bans ADD COLUMN is_cloud_host INTEGER NOT NULL DEFAULT 0")
-        # Note: the abuse_reports table (for auto abuse reporting) needs no
-        # migration branch here — it's a brand-new table, so the
-        # CREATE TABLE IF NOT EXISTS in SCHEMA above already handles both
-        # fresh installs and upgrades from a db that predates it.
+        # Note: the abuse_reports table (tracks which IPs have been sent an
+        # abuse report from the Reports page) needs no migration branch here
+        # — it's a brand-new table, so the CREATE TABLE IF NOT EXISTS in
+        # SCHEMA above already handles both fresh installs and upgrades from
+        # a db that predates it.
 
 
 def upsert_ban(row: dict) -> None:
@@ -465,38 +466,44 @@ def stats_by_scenario(status: str = "active", limit: int = 5, offset: int = 0) -
         ).fetchall()
 
 
-def auto_report_candidates(threshold: int, limit: int = 50) -> list[str]:
-    """IPs that have crossed the auto-report ban threshold and don't already
-    have a *successfully sent* report on file. A previous failed attempt
-    (SMTP down, no abuse email found that day, etc.) doesn't block a retry —
-    only status='sent' does, so a transient failure doesn't permanently skip
-    an IP that should still get reported.
+def report_candidates(threshold: int, limit: int = 50) -> list[dict]:
+    """Repeat offenders (ban count >= threshold) that don't already have a
+    *successfully sent* abuse report on file — the pending queue on the
+    Reports page. A previous failed attempt (SMTP down, no abuse email found
+    that day, etc.) doesn't exclude an IP — only status='sent' does, so a
+    transient failure doesn't permanently hide an IP that still needs
+    reporting; it just needs another manual attempt.
 
     Same local-origin exclusion as stats_top_ips: CAPI/lists/cscli decisions
     were never observed locally, so there's no real "repeat offender"
-    behavior to report — just noise from the shared community blocklist."""
+    behavior to report — just noise from the shared community blocklist.
+
+    Returns dicts (not just IPs) with enough context for the Reports list
+    to render without a second query per row."""
     with get_conn() as conn:
-        return [
-            row["ip"]
-            for row in conn.execute(
-                """
-                SELECT ip, COUNT(*) AS times_banned
-                FROM bans
-                WHERE (origin IS NULL OR origin = 'crowdsec')
-                GROUP BY ip
-                HAVING COUNT(*) >= ?
-                  AND ip NOT IN (SELECT ip FROM abuse_reports WHERE status = 'sent')
-                ORDER BY times_banned DESC
-                LIMIT ?
-                """,
-                (threshold, limit),
-            ).fetchall()
-        ]
+        rows = conn.execute(
+            """
+            SELECT ip, COUNT(*) AS times_banned, MIN(created_at) AS first_seen,
+                   MAX(created_at) AS last_seen
+            FROM bans
+            WHERE (origin IS NULL OR origin = 'crowdsec')
+            GROUP BY ip
+            HAVING COUNT(*) >= ?
+              AND ip NOT IN (SELECT ip FROM abuse_reports WHERE status = 'sent')
+            ORDER BY times_banned DESC, last_seen DESC
+            LIMIT ?
+            """,
+            (threshold, limit),
+        ).fetchall()
+        return [dict(row) for row in rows]
 
 
 def record_abuse_report(ip: str, *, times_banned_at_send: int, recipient: str, status: str) -> None:
-    """status is 'sent' or 'failed'. Upserts so a retried failure updates the
-    same row rather than piling up duplicates for one IP."""
+    """status is 'sent' or 'failed'. Upserts so a retried attempt (e.g. a
+    failed send followed by a successful one) updates the same row rather
+    than piling up duplicates for one IP — report_candidates() only cares
+    about the latest status, and the Reports history only needs to show the
+    most recent outcome per IP."""
     with get_conn() as conn:
         conn.execute(
             """
@@ -510,6 +517,22 @@ def record_abuse_report(ip: str, *, times_banned_at_send: int, recipient: str, s
             """,
             (ip, int(time.time()), times_banned_at_send, recipient, status),
         )
+
+
+def report_history(limit: int = 50) -> list[sqlite3.Row]:
+    """Every abuse report ever recorded (sent or failed), newest first — the
+    audit trail on the Reports page, so it's always visible which IPs have
+    already been reported and don't need reporting again."""
+    with get_conn() as conn:
+        return conn.execute(
+            """
+            SELECT ip, sent_at, times_banned_at_send, recipient, status
+            FROM abuse_reports
+            ORDER BY sent_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
 
 
 def get_settings(keys: list[str]) -> dict[str, str | None]:

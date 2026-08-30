@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<div id="reports-wrap"
+     hx-get="/partials/reports"
+     hx-trigger="load"
+     hx-swap="outerHTML">
+    Loading…
+</div>
+{% endblock %}

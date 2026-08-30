@@ -1,0 +1,28 @@
+<div class="abuse-box">
+    {% if abuse_email %}
+    <p>Abuse contact found via RDAP: <code>{{ abuse_email }}</code> — edit below if it doesn't look right.</p>
+    {% else %}
+    <p>Couldn't automatically find an abuse contact (RDAP lookup failed or no
+        abuse role listed). Look it up manually and enter it below before sending.</p>
+    {% endif %}
+    <form hx-post="/reports/send"
+          hx-target="#reports-wrap"
+          hx-swap="outerHTML"
+          hx-disabled-elt="find button[type='submit']">
+        <input type="hidden" name="ip" value="{{ ip }}">
+        <div class="settings-row">
+            <label for="recipient-{{ ip | replace('.', '_') }}">Recipient</label>
+            <input type="email" id="recipient-{{ ip | replace('.', '_') }}" name="recipient"
+                   value="{{ abuse_email or '' }}" required>
+        </div>
+        <div class="settings-row">
+            <label for="subject-{{ ip | replace('.', '_') }}">Subject</label>
+            <input type="text" id="subject-{{ ip | replace('.', '_') }}" name="subject" value="{{ subject }}">
+        </div>
+        <div class="settings-row">
+            <label for="body-{{ ip | replace('.', '_') }}">Message</label>
+            <textarea id="body-{{ ip | replace('.', '_') }}" name="body" rows="11">{{ report_text }}</textarea>
+        </div>
+        <button type="submit" class="pager-btn">Send report</button>
+    </form>
+</div>

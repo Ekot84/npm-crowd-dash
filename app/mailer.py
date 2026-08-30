@@ -1,15 +1,15 @@
 """Sends abuse-report email over SMTP. Deliberately stdlib-only (smtplib)
-rather than pulling in an async SMTP dependency — this fires at most a
-handful of times a day (once per newly-qualifying repeat offender, plus the
-occasional manual test send from the Settings page), so a sync call run in
-a worker thread is simpler than adding a new dependency for something this
-infrequent.
+rather than pulling in an async SMTP dependency — every send here is a
+deliberate, one-at-a-time action a person just took (clicking "Send report"
+on the Reports page, or "Send test email" on Settings), never something
+running on a timer, so a sync call run in a worker thread is simpler than
+adding a new dependency for something this infrequent.
 
 Takes an explicit SmtpConfig rather than reading app.config.settings
 directly, so the same send path serves two different config sources: the
-real auto-report poller (config merged from runtime_settings, i.e. DB
-overrides falling back to env vars) and the Settings page's "send test
-email" button (config taken straight from the form as currently typed,
+Reports page's "Send report" button (config merged from runtime_settings,
+i.e. DB overrides falling back to env vars) and the Settings page's "send
+test email" button (config taken straight from the form as currently typed,
 which may not be saved yet)."""
 
 import asyncio
