@@ -28,13 +28,22 @@ CREATE INDEX IF NOT EXISTS idx_bans_ip ON bans(ip);
 CREATE INDEX IF NOT EXISTS idx_bans_created_at ON bans(created_at);
 CREATE INDEX IF NOT EXISTS idx_bans_source_type ON bans(source_type);
 
+-- One row per report *attempt* (not per IP) — an IP can have several rows
+-- here over time (e.g. two failed sends followed by a successful one), so
+-- the full history is preserved rather than each attempt overwriting the
+-- last. `ip` is deliberately not unique/primary key; see report_candidates()
+-- and report_history() below for how "has this IP already been reported"
+-- and "show every attempt" are derived from that.
 CREATE TABLE IF NOT EXISTS abuse_reports (
-    ip TEXT PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ip TEXT NOT NULL,
     sent_at INTEGER NOT NULL,
     times_banned_at_send INTEGER NOT NULL,
     recipient TEXT NOT NULL,
     status TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_abuse_reports_ip ON abuse_reports(ip);
+CREATE INDEX IF NOT EXISTS idx_abuse_reports_sent_at ON abuse_reports(sent_at);
 
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
@@ -56,6 +65,14 @@ def get_conn():
 
 def init_db() -> None:
     with get_conn() as conn:
+        # Runs before executescript(SCHEMA): if an old-shape abuse_reports
+        # table exists, this replaces it with the new one-row-per-attempt
+        # shape first, so the CREATE TABLE/INDEX IF NOT EXISTS statements in
+        # SCHEMA below always see the final shape and are clean no-ops (or
+        # first-time creates for a brand-new db) rather than acting on a
+        # table that's about to be renamed out from under them.
+        _migrate_abuse_reports(conn)
+
         conn.executescript(SCHEMA)
         # Migration for dbs created before matched_rule existed.
         cols = {row["name"] for row in conn.execute("PRAGMA table_info(bans)").fetchall()}
@@ -63,11 +80,52 @@ def init_db() -> None:
             conn.execute("ALTER TABLE bans ADD COLUMN matched_rule TEXT")
         if "is_cloud_host" not in cols:
             conn.execute("ALTER TABLE bans ADD COLUMN is_cloud_host INTEGER NOT NULL DEFAULT 0")
-        # Note: the abuse_reports table (tracks which IPs have been sent an
-        # abuse report from the Reports page) needs no migration branch here
-        # — it's a brand-new table, so the CREATE TABLE IF NOT EXISTS in
-        # SCHEMA above already handles both fresh installs and upgrades from
-        # a db that predates it.
+
+
+def _migrate_abuse_reports(conn: sqlite3.Connection) -> None:
+    """abuse_reports originally had `ip TEXT PRIMARY KEY` — one row per IP,
+    with every new send attempt UPSERTed over the last, which collapsed a
+    sequence like failed/failed/sent into a single row and threw away the
+    audit trail. The new shape gives every attempt its own auto-incrementing
+    `id` and makes `ip` a plain (non-unique) indexed column.
+
+    Detects the old shape by the absence of an `id` column and migrates in
+    place: rename the old table out of the way, create the new one, copy
+    every existing row across unchanged (oldest first, so ids come out in
+    the same order the attempts actually happened), then drop the old
+    table. Existing rows/history are preserved exactly, just reshaped.
+
+    A brand-new database has no abuse_reports table yet at all — table_info
+    comes back empty, so this is a no-op there; SCHEMA's own
+    CREATE TABLE IF NOT EXISTS creates the new shape directly. A database
+    that's already been migrated has an `id` column, so this is a no-op
+    there too — it only does anything the first time an old-shape db is
+    opened after this upgrade."""
+    cols = {row["name"] for row in conn.execute("PRAGMA table_info(abuse_reports)").fetchall()}
+    if not cols or "id" in cols:
+        return
+    conn.execute("ALTER TABLE abuse_reports RENAME TO abuse_reports_old")
+    conn.execute(
+        """
+        CREATE TABLE abuse_reports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ip TEXT NOT NULL,
+            sent_at INTEGER NOT NULL,
+            times_banned_at_send INTEGER NOT NULL,
+            recipient TEXT NOT NULL,
+            status TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO abuse_reports (ip, sent_at, times_banned_at_send, recipient, status)
+        SELECT ip, sent_at, times_banned_at_send, recipient, status
+        FROM abuse_reports_old
+        ORDER BY sent_at
+        """
+    )
+    conn.execute("DROP TABLE abuse_reports_old")
 
 
 def upsert_ban(row: dict) -> None:
@@ -470,9 +528,15 @@ def report_candidates(threshold: int, limit: int = 50) -> list[dict]:
     """Repeat offenders (ban count >= threshold) that don't already have a
     *successfully sent* abuse report on file — the pending queue on the
     Reports page. A previous failed attempt (SMTP down, no abuse email found
-    that day, etc.) doesn't exclude an IP — only status='sent' does, so a
-    transient failure doesn't permanently hide an IP that still needs
-    reporting; it just needs another manual attempt.
+    that day, etc.) doesn't exclude an IP — only a status='sent' row does,
+    so a transient failure doesn't permanently hide an IP that still needs
+    reporting; it just needs another manual attempt. This holds regardless
+    of how many attempt rows an IP has accumulated in abuse_reports (one row
+    per attempt, not per IP — see _migrate_abuse_reports): the NOT IN
+    subquery below only cares whether *any* 'sent' row exists for the IP,
+    so once one successful send lands, later bans for that same IP never
+    make it pending again, and duplicate/failed attempts never sneak it
+    back in either.
 
     Same local-origin exclusion as stats_top_ips: CAPI/lists/cscli decisions
     were never observed locally, so there's no real "repeat offender"
@@ -499,36 +563,38 @@ def report_candidates(threshold: int, limit: int = 50) -> list[dict]:
 
 
 def record_abuse_report(ip: str, *, times_banned_at_send: int, recipient: str, status: str) -> None:
-    """status is 'sent' or 'failed'. Upserts so a retried attempt (e.g. a
-    failed send followed by a successful one) updates the same row rather
-    than piling up duplicates for one IP — report_candidates() only cares
-    about the latest status, and the Reports history only needs to show the
-    most recent outcome per IP."""
+    """status is 'sent' or 'failed'. Always INSERTs a new row — every attempt
+    is its own entry in the audit trail now, so a sequence like two failed
+    sends followed by a successful one shows up as three separate rows in
+    report_history() rather than collapsing into one (the old UPSERT-by-ip
+    behavior; see _migrate_abuse_reports for the schema this replaced)."""
     with get_conn() as conn:
         conn.execute(
             """
             INSERT INTO abuse_reports (ip, sent_at, times_banned_at_send, recipient, status)
             VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(ip) DO UPDATE SET
-                sent_at=excluded.sent_at,
-                times_banned_at_send=excluded.times_banned_at_send,
-                recipient=excluded.recipient,
-                status=excluded.status
             """,
             (ip, int(time.time()), times_banned_at_send, recipient, status),
         )
 
 
 def report_history(limit: int = 50) -> list[sqlite3.Row]:
-    """Every abuse report ever recorded (sent or failed), newest first — the
-    audit trail on the Reports page, so it's always visible which IPs have
-    already been reported and don't need reporting again."""
+    """Every abuse report attempt ever recorded (sent or failed), newest
+    first — including every attempt for an IP that was retried, not just its
+    latest outcome. The audit trail on the Reports page, so it's always
+    visible which IPs have already been (successfully) reported and don't
+    need reporting again, and what happened on any earlier tries.
+
+    Orders by id (not just sent_at) as the primary sort: sent_at has
+    1-second resolution, so two attempts recorded in the same second would
+    otherwise sort arbitrarily relative to each other — id, being
+    auto-incrementing, always reflects true insertion order."""
     with get_conn() as conn:
         return conn.execute(
             """
-            SELECT ip, sent_at, times_banned_at_send, recipient, status
+            SELECT id, ip, sent_at, times_banned_at_send, recipient, status
             FROM abuse_reports
-            ORDER BY sent_at DESC
+            ORDER BY id DESC
             LIMIT ?
             """,
             (limit,),
