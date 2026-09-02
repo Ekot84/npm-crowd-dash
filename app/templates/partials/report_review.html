@@ -23,6 +23,9 @@
             <label for="body-{{ ip | replace('.', '_') }}">Message</label>
             <textarea id="body-{{ ip | replace('.', '_') }}" name="body" rows="11">{{ report_text }}</textarea>
         </div>
+        <p class="filter-hint">A machine-readable X-ARF attachment (report.txt) is included
+            automatically, generated fresh from this IP's ban history at send time — some
+            abuse desks (e.g. DigitalOcean's) only auto-process reports that include one.</p>
         <button type="submit" class="pager-btn">Send report</button>
     </form>
 </div>

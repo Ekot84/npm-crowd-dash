@@ -327,6 +327,7 @@ async def reports_send(
 
     summary = db.ip_summary(ip)
     times_banned = summary["times_banned"] if summary else 0
+    xarf_report = reports.build_xarf_report(ip, summary) if summary else None
 
     cfg = runtime_settings.get_smtp_settings()
     smtp_cfg = mailer.SmtpConfig(
@@ -334,7 +335,7 @@ async def reports_send(
         password=cfg.smtp_password, from_addr=cfg.smtp_from,
     )
     try:
-        await mailer.send_email(smtp_cfg, recipient, subject, body)
+        await mailer.send_email(smtp_cfg, recipient, subject, body, xarf_report=xarf_report)
     except Exception as exc:
         log.exception("abuse report send failed for %s", ip)
         db.record_abuse_report(ip, times_banned_at_send=times_banned, recipient=recipient, status="failed")

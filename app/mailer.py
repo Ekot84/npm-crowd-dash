@@ -99,12 +99,33 @@ def _require(config: SmtpConfig) -> None:
         raise SmtpNotConfigured(f"missing SMTP settings: {', '.join(missing)}")
 
 
-def _send_sync(config: SmtpConfig, recipient: str, subject: str, body: str) -> None:
+def _send_sync(
+    config: SmtpConfig,
+    recipient: str,
+    subject: str,
+    body: str,
+    xarf_report: str | None = None,
+) -> None:
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"] = config.from_addr
     msg["To"] = recipient
     msg.set_content(body)
+
+    if xarf_report:
+        # Marks the message as X-ARF for tooling that keys off this header
+        # rather than sniffing the attachment, and flags it as
+        # machine-generated content (the report itself is templated even
+        # though a person just reviewed and clicked "send"), matching what
+        # fail2ban's own X-ARF action sends.
+        msg["X-XARF"] = "PLAIN"
+        msg["Auto-Submitted"] = "auto-generated"
+        msg.add_attachment(
+            xarf_report.encode("utf-8"),
+            maintype="text",
+            subtype="plain",
+            filename="report.txt",
+        )
 
     context = ssl.create_default_context()
     if config.port == 465:
@@ -120,11 +141,22 @@ def _send_sync(config: SmtpConfig, recipient: str, subject: str, body: str) -> N
             server.send_message(msg)
 
 
-async def send_email(config: SmtpConfig, recipient: str, subject: str, body: str) -> None:
+async def send_email(
+    config: SmtpConfig,
+    recipient: str,
+    subject: str,
+    body: str,
+    xarf_report: str | None = None,
+) -> None:
     """Raises SmtpNotConfigured or whatever smtplib/ssl raises on failure.
     Callers are responsible for catching, logging/reporting, and (for the
     Reports page's send-report action specifically) recording the failure
     so a bad send doesn't lose track of the report — it just stays pending
-    for another manual attempt."""
+    for another manual attempt.
+
+    xarf_report, when given, is attached as a machine-readable X-ARF part
+    alongside the human-written body (see reports.build_xarf_report) —
+    only the Reports page's send-report action passes one; the Settings
+    page's test-email send does not, since there's no ban data to report."""
     _require(config)
-    await asyncio.to_thread(_send_sync, config, recipient, subject, body)
+    await asyncio.to_thread(_send_sync, config, recipient, subject, body, xarf_report)
