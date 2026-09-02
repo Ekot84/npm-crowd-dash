@@ -15,11 +15,52 @@ which may not be saved yet)."""
 import asyncio
 import logging
 import smtplib
+import socket
 import ssl
 from dataclasses import dataclass
 from email.message import EmailMessage
 
 log = logging.getLogger("mailer")
+
+
+def _connect_ipv4(host: str, port: int, timeout: float | None) -> socket.socket:
+    """Connects using only IPv4 addresses, skipping any IPv6 candidates
+    getaddrinfo returns for the host.
+
+    Plain socket.create_connection() (what smtplib normally uses under the
+    hood) tries every address family getaddrinfo hands back, IPv6 included.
+    On some Docker network setups IPv6 looks reachable at the interface
+    level but has no real upstream route, so a send intermittently fails
+    with "OSError: [Errno 101] Network is unreachable" whenever the
+    resolver happens to hand back the host's IPv6 address first — seen in
+    practice against smtp.gmail.com, which publishes both an A and an AAAA
+    record. Every mail server this app talks to is reachable over IPv4, so
+    skipping IPv6 entirely removes that flakiness instead of chasing a
+    routing fix on every machine this ends up deployed on."""
+    last_exc: OSError | None = None
+    for family, socktype, proto, _canonname, sockaddr in socket.getaddrinfo(
+        host, port, socket.AF_INET, socket.SOCK_STREAM
+    ):
+        sock = socket.socket(family, socktype, proto)
+        try:
+            sock.settimeout(timeout)
+            sock.connect(sockaddr)
+            return sock
+        except OSError as exc:
+            sock.close()
+            last_exc = exc
+    raise last_exc or OSError(f"no IPv4 address found for {host}")
+
+
+class _IPv4SMTP(smtplib.SMTP):
+    def _get_socket(self, host, port, timeout):
+        return _connect_ipv4(host, port, timeout)
+
+
+class _IPv4SMTP_SSL(smtplib.SMTP_SSL):
+    def _get_socket(self, host, port, timeout):
+        sock = _connect_ipv4(host, port, timeout)
+        return self.context.wrap_socket(sock, server_hostname=self._host)
 
 
 @dataclass
@@ -68,12 +109,12 @@ def _send_sync(config: SmtpConfig, recipient: str, subject: str, body: str) -> N
     context = ssl.create_default_context()
     if config.port == 465:
         # Implicit TLS from the start of the connection.
-        with smtplib.SMTP_SSL(config.host, config.port, context=context, timeout=30) as server:
+        with _IPv4SMTP_SSL(config.host, config.port, context=context, timeout=30) as server:
             server.login(config.user, config.password)
             server.send_message(msg)
     else:
         # Plain connection upgraded via STARTTLS (587 and most other ports).
-        with smtplib.SMTP(config.host, config.port, timeout=30) as server:
+        with _IPv4SMTP(config.host, config.port, timeout=30) as server:
             server.starttls(context=context)
             server.login(config.user, config.password)
             server.send_message(msg)
@@ -82,7 +123,8 @@ def _send_sync(config: SmtpConfig, recipient: str, subject: str, body: str) -> N
 async def send_email(config: SmtpConfig, recipient: str, subject: str, body: str) -> None:
     """Raises SmtpNotConfigured or whatever smtplib/ssl raises on failure.
     Callers are responsible for catching, logging/reporting, and (for the
-    auto-report poller specifically) recording the failure so a single bad
-    send doesn't crash the poll loop."""
+    Reports page's send-report action specifically) recording the failure
+    so a bad send doesn't lose track of the report — it just stays pending
+    for another manual attempt."""
     _require(config)
     await asyncio.to_thread(_send_sync, config, recipient, subject, body)
