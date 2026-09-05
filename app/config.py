@@ -14,6 +14,17 @@ class Settings(BaseSettings):
     repeat_offender_threshold: int = 3
     country_ban_threshold: int = 10
 
+    # Escalates a repeat local offender straight to a long ban once their
+    # local-origin ban count reaches this threshold, by pushing a manual
+    # decision to CrowdSec's LAPI (reusing the same machine/watcher login
+    # already used to read alerts — see crowdsec_client.add_manual_ban).
+    # Off by default: test it manually against the LAPI first with a short
+    # duration before enabling on a live poller, since once on it acts on
+    # real IPs automatically, every poll cycle.
+    repeat_offender_escalation_enabled: bool = False
+    repeat_offender_escalation_threshold: int = 8
+    repeat_offender_escalation_duration: str = "8760h"
+
     # Used to actually send an abuse report from the Reports page (see
     # app/mailer.py) — nothing is ever emailed automatically. Set these (or
     # fill in the same fields on the Settings page) before the "Send report"

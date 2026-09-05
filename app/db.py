@@ -49,6 +49,18 @@ CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT
 );
+
+-- One row per IP that has ever been escalated to a long manual ban (see
+-- poller._maybe_escalate). Upserted, not append-only like abuse_reports —
+-- there's only one thing to escalate to (the long ban), so only the latest
+-- attempt matters; status='sent' is what blocks re-escalating the same IP.
+CREATE TABLE IF NOT EXISTS escalations (
+    ip TEXT PRIMARY KEY,
+    escalated_at INTEGER NOT NULL,
+    times_banned_at_escalation INTEGER NOT NULL,
+    decision_duration TEXT,
+    status TEXT NOT NULL
+);
 """
 
 
@@ -599,6 +611,54 @@ def report_history(limit: int = 50) -> list[sqlite3.Row]:
             """,
             (limit,),
         ).fetchall()
+
+
+def local_ban_count(ip: str) -> int:
+    """Total local-origin bans ever recorded for this IP — same definition
+    stats_top_ips/report_candidates use (excludes CAPI/lists/cscli noise),
+    but for a single IP and without a HAVING clause, so a caller can compare
+    the raw count against its own threshold directly."""
+    with get_conn() as conn:
+        row = conn.execute(
+            """
+            SELECT COUNT(*) AS count FROM bans
+            WHERE ip = ? AND (origin IS NULL OR origin = 'crowdsec')
+            """,
+            (ip,),
+        ).fetchone()
+        return row["count"]
+
+
+def has_sent_escalation(ip: str) -> bool:
+    """True once a manual escalation ban has already been successfully
+    pushed for this IP. A previous *failed* attempt doesn't count, so it's
+    retried the next time this IP earns another local ban rather than
+    silently never happening (same retry-on-failure shape as abuse_reports'
+    report_candidates)."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM escalations WHERE ip = ? AND status = 'sent'", (ip,)
+        ).fetchone()
+        return row is not None
+
+
+def record_escalation(ip: str, *, times_banned: int, duration: str, status: str) -> None:
+    """status is 'sent' or 'failed'. Upserts by ip — unlike abuse_reports,
+    there's nothing to keep a full attempt history of here beyond "did the
+    long ban land or not", so each new attempt just overwrites the last."""
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO escalations (ip, escalated_at, times_banned_at_escalation, decision_duration, status)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(ip) DO UPDATE SET
+                escalated_at = excluded.escalated_at,
+                times_banned_at_escalation = excluded.times_banned_at_escalation,
+                decision_duration = excluded.decision_duration,
+                status = excluded.status
+            """,
+            (ip, int(time.time()), times_banned, duration, status),
+        )
 
 
 def get_settings(keys: list[str]) -> dict[str, str | None]:

@@ -213,6 +213,35 @@ async def _handle_new_decision(client: CrowdSecClient, decision: dict) -> None:
     }
     db.upsert_ban(row)
 
+    if settings.repeat_offender_escalation_enabled and ip and origin in _LOCAL_ALERT_ORIGINS:
+        await _maybe_escalate(client, ip)
+
+
+async def _maybe_escalate(client: CrowdSecClient, ip: str) -> None:
+    """Once a repeat local offender's ban count reaches the configured
+    threshold, push a long-duration ban straight to CrowdSec instead of
+    waiting for the normal short duration to lapse and the same IP to come
+    back and earn another one. Fires at most once per IP (guarded by
+    db.has_sent_escalation) — later local bans against an already-escalated
+    IP don't re-trigger this, they just accumulate under an IP that's
+    already on a long ban. A failed push is retried the next time this IP
+    earns another local ban, not immediately, since bans for the same IP
+    are usually spaced well apart."""
+    count = db.local_ban_count(ip)
+    if count < settings.repeat_offender_escalation_threshold:
+        return
+    if db.has_sent_escalation(ip):
+        return
+    duration = settings.repeat_offender_escalation_duration
+    try:
+        await client.add_manual_ban(ip, duration=duration, reason=f"{count} local bans")
+    except Exception:
+        log.exception("failed to push escalation ban for %s", ip)
+        db.record_escalation(ip, times_banned=count, duration=duration, status="failed")
+        return
+    db.record_escalation(ip, times_banned=count, duration=duration, status="sent")
+    log.info("escalated repeat offender %s (%d local bans) to a %s ban", ip, count, duration)
+
 
 _MAX_CONCURRENT_ALERT_LOOKUPS = 10
 
