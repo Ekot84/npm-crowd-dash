@@ -46,10 +46,13 @@ using the same env vars and a `/data` volume mapping as in `docker-compose.yml`.
 
 ## Abuse reports
 
-Set `REPORT_PUBLIC_IP` to the public IP address of the server receiving the
-attacks to include it as the target address in report previews, emails, and
-X-ARF attachments. Both IPv4 and IPv6 are supported. With Compose, set it in
-`.env` and recreate the container; with Unraid, add it as a container variable.
+Reports automatically look up the dashboard's current public IPv4 address via
+HTTPS to api.ipify.org when prepared and sent. This follows changes to your
+public IP without editing container settings. If lookup fails, reports still
+work but omit the address. This is the current outgoing address, not a record
+of the address at the time of older attacks. If the dashboard uses a VPN or a
+different connection from the attacked server, set `REPORT_PUBLIC_IP` to override
+the lookup (IPv4 or IPv6). With Unraid, add it as a container variable.
 
 Reporting an abusive IP to its network's abuse contact is always a manual,
 reviewed step — nothing is ever emailed automatically. Two ways to do it:

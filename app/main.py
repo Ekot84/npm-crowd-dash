@@ -279,6 +279,7 @@ async def reports_review_partial(request: Request, ip: str):
     if summary is None:
         return JSONResponse({"error": "no ban history for this ip"}, status_code=404)
 
+    summary = await reports.with_public_ip(summary)
     abuse_email = await abuse.lookup_abuse_email(ip)
     return templates.TemplateResponse(
         request,
@@ -327,6 +328,14 @@ async def reports_send(
 
     summary = db.ip_summary(ip)
     times_banned = summary["times_banned"] if summary else 0
+    if summary:
+        summary = await reports.with_public_ip(summary)
+        # Refresh the generated address line while preserving the reviewed body.
+        prefix = "Current public IP address (our server):"
+        lines = [line for line in body.splitlines() if not line.startswith(prefix)]
+        if summary.get("public_ip"):
+            lines.extend(["", f"{prefix} {summary['public_ip']}"])
+        body = "\n".join(lines)
     xarf_report = reports.build_xarf_report(ip, summary) if summary else None
 
     cfg = runtime_settings.get_smtp_settings()
@@ -362,6 +371,7 @@ async def abuse_report_partial(request: Request, ip: str):
     if summary is None:
         return JSONResponse({"error": "no ban history for this ip"}, status_code=404)
 
+    summary = await reports.with_public_ip(summary)
     abuse_email = await abuse.lookup_abuse_email(ip)
     report_text = reports.build_report_text(ip, summary)
     mailto_href = None

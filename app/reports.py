@@ -16,9 +16,30 @@ whatever's parsing it on the other end; only the human-readable body above
 is meant to be reviewed/edited before sending."""
 
 import time
+import ipaddress
+import logging
+
+import httpx
 from urllib.parse import quote
 
 from .config import settings
+
+
+async def with_public_ip(summary: dict) -> dict:
+    """Resolve at report preparation/send time; never reuse a stale address."""
+    public_ip = settings.report_public_ip
+    if not public_ip:
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get("https://api.ipify.org")
+                response.raise_for_status()
+                public_ip = ipaddress.ip_address(response.text.strip())
+                if not public_ip.is_global:
+                    raise ValueError("Public IP lookup returned a non-public address")
+        except (httpx.HTTPError, ValueError):
+            logging.getLogger(__name__).warning("Could not determine current public IP")
+            public_ip = None
+    return {**summary, "public_ip": str(public_ip) if public_ip else None}
 
 
 def fmt_ts(ts: int | None) -> str:
@@ -28,6 +49,7 @@ def fmt_ts(ts: int | None) -> str:
 
 
 def build_report_text(ip: str, summary: dict) -> str:
+    public_ip = summary.get("public_ip") or settings.report_public_ip
     activity = summary.get("reason_message") or summary.get("scenario") or "n/a"
     lines = [
         "Hello,",
@@ -36,8 +58,8 @@ def build_report_text(ip: str, summary: dict) -> str:
         "detected malicious activity from this IP address, hosted on your network:",
         "",
         f"IP address: {ip}",
-        *([f"Target public IP address (our server): {settings.report_public_ip}"]
-          if settings.report_public_ip else []),
+        *([f"Current public IP address (our server): {public_ip}"]
+          if public_ip else []),
         f"Autonomous system: {summary.get('as_name') or 'unknown'}",
         f"Country (GeoIP): {summary.get('country') or 'unknown'}",
         f"Times banned: {summary['times_banned']}",
@@ -75,6 +97,7 @@ def build_xarf_report(ip: str, summary: dict, now_ts: int | None = None) -> str:
     ships and the one abuse desks are most likely to actually recognize —
     a better bet than inventing a non-standard type for the occasional
     scenario (e.g. a port scan) that isn't a perfect fit."""
+    public_ip = summary.get("public_ip") or settings.report_public_ip
     now = int(now_ts if now_ts is not None else time.time())
     date_str = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
     service = summary.get("scenario") or "unspecified"
@@ -88,8 +111,8 @@ def build_xarf_report(ip: str, summary: dict, now_ts: int | None = None) -> str:
         f"Date: {date_str}",
         "Source-Type: ip-address",
         f"Source: {ip}",
-        *([f"Destination: {settings.report_public_ip}"]
-          if settings.report_public_ip else []),
+        *([f"Destination: {public_ip}"]
+          if public_ip else []),
         "Schema-URL: http://www.x-arf.org/schema/abuse_login-attack_0.1.2.json",
         f"Occurrences: {summary['times_banned']}",
         "TLP: green",
