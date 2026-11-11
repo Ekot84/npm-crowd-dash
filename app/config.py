@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import IPvAnyAddress, field_validator
 
 
 class Settings(BaseSettings):
@@ -13,6 +14,12 @@ class Settings(BaseSettings):
     retention_days: int = 90
     repeat_offender_threshold: int = 3
     country_ban_threshold: int = 10
+    report_public_ip: IPvAnyAddress | None = None
+
+    @field_validator("report_public_ip", mode="before")
+    @classmethod
+    def empty_public_ip(cls, value):
+        return None if isinstance(value, str) and not value.strip() else value
 
     # Escalates a repeat local offender straight to a long ban once their
     # local-origin ban count reaches this threshold, by pushing a manual

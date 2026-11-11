@@ -46,6 +46,11 @@ using the same env vars and a `/data` volume mapping as in `docker-compose.yml`.
 
 ## Abuse reports
 
+Set `REPORT_PUBLIC_IP` to the public IP address of the server receiving the
+attacks to include it as the target address in report previews, emails, and
+X-ARF attachments. Both IPv4 and IPv6 are supported. With Compose, set it in
+`.env` and recreate the container; with Unraid, add it as a container variable.
+
 Reporting an abusive IP to its network's abuse contact is always a manual,
 reviewed step — nothing is ever emailed automatically. Two ways to do it:
 

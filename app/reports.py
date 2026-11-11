@@ -18,6 +18,8 @@ is meant to be reviewed/edited before sending."""
 import time
 from urllib.parse import quote
 
+from .config import settings
+
 
 def fmt_ts(ts: int | None) -> str:
     if not ts:
@@ -34,6 +36,8 @@ def build_report_text(ip: str, summary: dict) -> str:
         "detected malicious activity from this IP address, hosted on your network:",
         "",
         f"IP address: {ip}",
+        *([f"Target public IP address (our server): {settings.report_public_ip}"]
+          if settings.report_public_ip else []),
         f"Autonomous system: {summary.get('as_name') or 'unknown'}",
         f"Country (GeoIP): {summary.get('country') or 'unknown'}",
         f"Times banned: {summary['times_banned']}",
@@ -84,6 +88,8 @@ def build_xarf_report(ip: str, summary: dict, now_ts: int | None = None) -> str:
         f"Date: {date_str}",
         "Source-Type: ip-address",
         f"Source: {ip}",
+        *([f"Destination: {settings.report_public_ip}"]
+          if settings.report_public_ip else []),
         "Schema-URL: http://www.x-arf.org/schema/abuse_login-attack_0.1.2.json",
         f"Occurrences: {summary['times_banned']}",
         "TLP: green",
