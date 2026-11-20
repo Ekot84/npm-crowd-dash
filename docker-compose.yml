@@ -18,6 +18,19 @@ services:
       COUNTRY_BAN_THRESHOLD: "${COUNTRY_BAN_THRESHOLD:-10}"
       TZ: "Europe/Stockholm"
       REPORT_PUBLIC_IP: "${REPORT_PUBLIC_IP:-}"
+      REPORT_MAX_AGE_DAYS: "${REPORT_MAX_AGE_DAYS:-30}"
+      # Long ban once an IP reaches N local bans — see README.
+      REPEAT_OFFENDER_ESCALATION_ENABLED: "${REPEAT_OFFENDER_ESCALATION_ENABLED:-false}"
+      REPEAT_OFFENDER_ESCALATION_THRESHOLD: "${REPEAT_OFFENDER_ESCALATION_THRESHOLD:-8}"
+      REPEAT_OFFENDER_ESCALATION_DURATION: "${REPEAT_OFFENDER_ESCALATION_DURATION:-8760h}"
+      # AbuseIPDB scores + optional auto-ban — see README. Empty key = off.
+      ABUSEIPDB_API_KEY: "${ABUSEIPDB_API_KEY:-}"
+      ABUSEIPDB_CACHE_DAYS: "${ABUSEIPDB_CACHE_DAYS:-7}"
+      ABUSEIPDB_DAILY_LIMIT: "${ABUSEIPDB_DAILY_LIMIT:-900}"
+      ABUSEIPDB_BAN_ENABLED: "${ABUSEIPDB_BAN_ENABLED:-false}"
+      ABUSEIPDB_BAN_MIN_SCORE: "${ABUSEIPDB_BAN_MIN_SCORE:-75}"
+      ABUSEIPDB_BAN_MIN_BANS: "${ABUSEIPDB_BAN_MIN_BANS:-3}"
+      ABUSEIPDB_BAN_DAYS: "${ABUSEIPDB_BAN_DAYS:-30}"
       # Used by the Reports page to send an abuse report you've reviewed
       # there — see .env.example. Nothing is emailed automatically.
       SMTP_HOST: "${SMTP_HOST:-}"

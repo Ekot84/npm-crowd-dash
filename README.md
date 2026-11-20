@@ -9,6 +9,22 @@ keeps a local history in SQLite (CrowdSec forgets a decision once it
 expires — this doesn't), and serves an auto-refreshing table via
 FastAPI + HTMX (single container, no JS build step).
 
+## What's in it
+
+- **Stats**: totals, bans by country, source (CrowdSec vs AppSec), scenario/rule,
+  hosting provider (AS), and **Repeat offenders**: IPs banned more than once,
+  with a time-period filter, a ready-to-paste `cscli` command for a long ban,
+  and an optional AbuseIPDB score.
+- **Bans**: the full ban history (active and expired), filterable.
+- **Reports**: a queue of repeat offenders to report to their network's abuse
+  contact (reviewed and sent by you), the report history, and the list of
+  **escalated bans** this dashboard has pushed to CrowdSec.
+- **Settings**: Reports queue age, AbuseIPDB lookups and auto-ban, and SMTP.
+
+Every column header on **Repeat offenders** and the **Reports** queue is
+clickable to sort (click again to reverse). Sorting is done server-side, so it
+covers all pages and survives the automatic refresh.
+
 ## 1. Create CrowdSec credentials
 
 Run these **on the CrowdSec container** (e.g. `docker exec -it crowdsec cscli ...`):
@@ -34,17 +50,32 @@ Copy `.env.example` to `.env` (or edit `docker-compose.yml` directly) and fill i
 
 ## 3. Run
 
+A prebuilt image (amd64 + arm64) is published on every push to `main`:
+`ghcr.io/ekot84/npm-crowd-dash:latest`.
+
+**Docker Compose**, building from source:
+
 ```bash
 docker compose up -d --build
 ```
 
+To use the prebuilt image instead, replace `build: .` / `image:` in
+`docker-compose.yml` with `image: ghcr.io/ekot84/npm-crowd-dash:latest` and run
+`docker compose pull && docker compose up -d`.
+
+**Unraid:** install from the template in `unraid-template/`, which uses the
+prebuilt image. To update, go to **Docker** → click the container →
+**Force update**. Your data in `/data` is kept.
+
 Then open `http://<host>:8000`.
 
-On Unraid without Compose: build the image once (`docker build -t
-npm-crowd-dash .`), then add it as a container manually via "Add Container",
-using the same env vars and a `/data` volume mapping as in `docker-compose.yml`.
-
 ## Abuse reports
+
+The **Reports** queue lists repeat offenders seen recently, most recent first
+by default. IPs whose latest ban is older than `REPORT_MAX_AGE_DAYS` (default
+30, `0` = no limit, also changeable under **Settings → Reports**) are hidden
+because they have most likely moved on. They're only hidden: if the IP comes
+back, it's listed again with its full ban count.
 
 Reports automatically look up the dashboard's current public IPv4 address via
 HTTPS to api.ipify.org when prepared and sent. This follows changes to your
@@ -93,6 +124,22 @@ still starts and works normally; the Settings page shows the SMTP password
 field disabled with an explanation, and refuses to save a new password
 until the key is configured. Setting it is a one-time step — generate the
 key, set the env var, restart the container.
+
+## Repeat-offender escalation (optional, off by default)
+
+Pushes a long ban to CrowdSec once an IP reaches a number of local bans,
+instead of letting it come back every time its short ban runs out:
+
+```env
+REPEAT_OFFENDER_ESCALATION_ENABLED=true
+REPEAT_OFFENDER_ESCALATION_THRESHOLD=8     # local bans before escalating
+REPEAT_OFFENDER_ESCALATION_DURATION=8760h  # ban length (Go duration, 8760h = 1 year)
+```
+
+It uses the machine login from step 1 to add the decision, so no Docker socket
+is needed. Escalated bans show up under **Escalated bans** on the Reports page.
+Once a ban expires, an IP that comes back can be escalated again. Test it with
+a short duration first: once on, it acts on real IPs automatically.
 
 ## AbuseIPDB scores (optional)
 
@@ -185,9 +232,37 @@ The Settings page values override these env defaults:
 `ABUSEIPDB_BAN_ENABLED` (`false`), `ABUSEIPDB_BAN_MIN_SCORE` (`75`),
 `ABUSEIPDB_BAN_MIN_BANS` (`3`), `ABUSEIPDB_BAN_DAYS` (`30`).
 
-The existing repeat-offender escalation (`REPEAT_OFFENDER_ESCALATION_*`) now
-works the same way: once its ban expires, an IP that comes back can be
-escalated again.
+
+## Configuration reference
+
+All settings are environment variables. The ones marked **UI** can also be
+changed on the Settings page, and a value saved there wins over the env var.
+
+| Variable | Default | |
+|---|---|---|
+| `CROWDSEC_LAPI_URL` | `http://127.0.0.1:8080` | CrowdSec LAPI, use the LAN IP |
+| `CROWDSEC_BOUNCER_KEY` | *(required)* | From `cscli bouncers add` |
+| `CROWDSEC_MACHINE_ID` / `CROWDSEC_MACHINE_PASSWORD` | *(required)* | From `cscli machines add` |
+| `POLL_INTERVAL_SECONDS` | `15` | How often the LAPI is polled |
+| `DB_PATH` | `/data/dashboard.db` | SQLite database |
+| `RETENTION_DAYS` | `90` | Expired bans older than this are pruned |
+| `REPEAT_OFFENDER_THRESHOLD` | `3` | Bans before an IP is flagged, reportable and looked up on AbuseIPDB |
+| `COUNTRY_BAN_THRESHOLD` | `10` | Bans before a country is flagged |
+| `TZ` | `Europe/Stockholm` | Timezone for timestamps |
+| `REPORT_PUBLIC_IP` | *(auto-detected)* | Your public IP in abuse reports |
+| `REPORT_MAX_AGE_DAYS` | `30` | **UI.** Hide report candidates not seen for this long (`0` = never) |
+| `REPEAT_OFFENDER_ESCALATION_ENABLED` | `false` | Long ban after N local bans |
+| `REPEAT_OFFENDER_ESCALATION_THRESHOLD` | `8` | N for the above |
+| `REPEAT_OFFENDER_ESCALATION_DURATION` | `8760h` | Length of that ban |
+| `ABUSEIPDB_API_KEY` | *(empty = off)* | AbuseIPDB key. Lookups can be switched off in the **UI** |
+| `ABUSEIPDB_CACHE_DAYS` | `7` | Reuse a cached score this long |
+| `ABUSEIPDB_DAILY_LIMIT` | `900` | Max lookups per UTC day |
+| `ABUSEIPDB_BAN_ENABLED` | `false` | **UI.** AbuseIPDB auto-ban |
+| `ABUSEIPDB_BAN_MIN_SCORE` | `75` | **UI.** Minimum score for auto-ban |
+| `ABUSEIPDB_BAN_MIN_BANS` | `3` | **UI.** Minimum local bans for auto-ban |
+| `ABUSEIPDB_BAN_DAYS` | `30` | **UI.** Auto-ban length |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | — / `587` | **UI.** Sending abuse reports |
+| `SETTINGS_SECRET_KEY` | *(empty)* | Needed to save an SMTP password in the UI |
 
 ## Notes
 
