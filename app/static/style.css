@@ -377,6 +377,10 @@ main {
     max-width: 480px;
 }
 
+.settings-panel + .settings-panel {
+    margin-top: 1.25rem;
+}
+
 .settings-form {
     margin-top: 1rem;
 }

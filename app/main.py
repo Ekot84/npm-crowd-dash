@@ -446,9 +446,7 @@ async def settings_save(
     smtp_user: str = Form(""),
     smtp_password: str = Form(""),
     smtp_from: str = Form(""),
-    report_max_age_days: int = Form(30),
 ):
-    runtime_settings.save_report_max_age_days(report_max_age_days)
     password_rejected = runtime_settings.save_smtp_settings(
         smtp_host=smtp_host,
         smtp_port=smtp_port,
@@ -460,11 +458,19 @@ async def settings_save(
         request, "partials/settings_form.html",
         {
             "cfg": runtime_settings.get_smtp_settings(),
-            "report_max_age_days": runtime_settings.get_report_max_age_days(),
             "saved": True,
             "password_rejected": password_rejected,
             "key_configured": secrets_store.is_key_configured(),
         },
+    )
+
+
+@app.post("/settings/reports")
+async def settings_reports_save(request: Request, report_max_age_days: int = Form(30)):
+    runtime_settings.save_report_max_age_days(report_max_age_days)
+    return templates.TemplateResponse(
+        request, "partials/settings_reports_form.html",
+        {"report_max_age_days": runtime_settings.get_report_max_age_days(), "reports_saved": True},
     )
 
 

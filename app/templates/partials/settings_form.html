@@ -43,12 +43,6 @@
             <input type="text" id="smtp_from" name="smtp_from" value="{{ cfg.smtp_from or '' }}"
                    placeholder="noreply@example.com">
         </div>
-        <div class="settings-row">
-            <label for="report_max_age_days">Reports: hide IPs not seen for (days)</label>
-            <input type="number" id="report_max_age_days" name="report_max_age_days" min="0"
-                   value="{{ report_max_age_days }}">
-            <p class="filter-hint">Repeat offenders whose latest ban is older than this are left out of the pending list on the Reports page. They're only hidden — if the IP comes back it shows up again. 0 = never hide.</p>
-        </div>
         <button type="submit" class="pager-btn">Save</button>
     </form>
 

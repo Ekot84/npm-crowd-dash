@@ -1,6 +1,14 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="stats-panel settings-panel">
+    <h2>Reports</h2>
+    <p class="filter-hint">
+        Controls the pending list on the <a href="/reports">Reports</a> page.
+    </p>
+    {% include "partials/settings_reports_form.html" %}
+</div>
+
+<div class="stats-panel settings-panel">
     <h2>SMTP settings</h2>
     <p class="filter-hint">
         Used when you send an abuse report from the <a href="/reports">Reports</a>
