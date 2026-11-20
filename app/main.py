@@ -235,7 +235,10 @@ async def stats_panel(
 
 
 def _reports_context(*, message: str | None = None, message_ok: bool = True) -> dict:
-    candidates = db.report_candidates(settings.repeat_offender_threshold, limit=_REPORTS_CANDIDATES_LIMIT)
+    max_age_days = runtime_settings.get_report_max_age_days()
+    candidates = db.report_candidates(
+        settings.repeat_offender_threshold, max_age_days, limit=_REPORTS_CANDIDATES_LIMIT
+    )
     for row in candidates:
         row["last_seen_str"] = _fmt_ts(row["last_seen"])
 
@@ -247,6 +250,7 @@ def _reports_context(*, message: str | None = None, message_ok: bool = True) -> 
         "candidates": candidates,
         "history": history,
         "repeat_offender_threshold": settings.repeat_offender_threshold,
+        "report_max_age_days": max_age_days,
         "message": message,
         "message_ok": message_ok,
     }
@@ -259,7 +263,11 @@ async def reports_page(request: Request):
 
 @app.get("/partials/reports-count")
 async def reports_count_partial(request: Request):
-    count = len(db.report_candidates(settings.repeat_offender_threshold, limit=_REPORTS_CANDIDATES_LIMIT))
+    count = len(db.report_candidates(
+        settings.repeat_offender_threshold,
+        runtime_settings.get_report_max_age_days(),
+        limit=_REPORTS_CANDIDATES_LIMIT,
+    ))
     return templates.TemplateResponse(request, "partials/reports_count.html", {"count": count})
 
 
@@ -422,6 +430,7 @@ async def settings_page(request: Request):
         {
             "active_page": "settings",
             "cfg": runtime_settings.get_smtp_settings(),
+            "report_max_age_days": runtime_settings.get_report_max_age_days(),
             "saved": False,
             "password_rejected": False,
             "key_configured": secrets_store.is_key_configured(),
@@ -437,7 +446,9 @@ async def settings_save(
     smtp_user: str = Form(""),
     smtp_password: str = Form(""),
     smtp_from: str = Form(""),
+    report_max_age_days: int = Form(30),
 ):
+    runtime_settings.save_report_max_age_days(report_max_age_days)
     password_rejected = runtime_settings.save_smtp_settings(
         smtp_host=smtp_host,
         smtp_port=smtp_port,
@@ -449,6 +460,7 @@ async def settings_save(
         request, "partials/settings_form.html",
         {
             "cfg": runtime_settings.get_smtp_settings(),
+            "report_max_age_days": runtime_settings.get_report_max_age_days(),
             "saved": True,
             "password_rejected": password_rejected,
             "key_configured": secrets_store.is_key_configured(),

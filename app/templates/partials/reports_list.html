@@ -13,7 +13,9 @@
         </div>
         <p class="filter-hint">
             Repeat offenders banned {{ repeat_offender_threshold }}+ times that
-            don't have a successfully sent abuse report on file yet. Nothing is
+            don't have a successfully sent abuse report on file yet{% if report_max_age_days %},
+            seen within the last {{ report_max_age_days }} days (change on the
+            Settings page){% endif %} — most recently seen first. Nothing is
             emailed automatically — review the recipient and text, then send.
             Once a report is marked "sent" below, that IP won't show up here
             again, so the same IP is never reported twice by mistake. This list

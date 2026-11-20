@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     db_path: str = "/data/dashboard.db"
     retention_days: int = 90
     repeat_offender_threshold: int = 3
+    # Pending-report queue on the Reports page only lists repeat offenders
+    # seen within this many days — an IP that hasn't come back in a month
+    # has most likely moved on and isn't worth reporting anymore. 0 = no
+    # limit. Can be overridden at runtime from the Settings page.
+    report_max_age_days: int = 30
     country_ban_threshold: int = 10
     report_public_ip: IPvAnyAddress | None = None
 

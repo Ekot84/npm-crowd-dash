@@ -536,7 +536,7 @@ def stats_by_scenario(status: str = "active", limit: int = 5, offset: int = 0) -
         ).fetchall()
 
 
-def report_candidates(threshold: int, limit: int = 50) -> list[dict]:
+def report_candidates(threshold: int, max_age_days: int = 0, limit: int = 50) -> list[dict]:
     """Repeat offenders (ban count >= threshold) that don't already have a
     *successfully sent* abuse report on file — the pending queue on the
     Reports page. A previous failed attempt (SMTP down, no abuse email found
@@ -554,8 +554,17 @@ def report_candidates(threshold: int, limit: int = 50) -> list[dict]:
     were never observed locally, so there's no real "repeat offender"
     behavior to report — just noise from the shared community blocklist.
 
+    max_age_days > 0 hides IPs whose most recent ban is older than that —
+    an offender that hasn't come back in that long has most likely moved on
+    and isn't worth reporting anymore. Hidden, not deleted: if the IP shows
+    up again it's back in the queue with its full ban count. 0 = no limit.
+
+    Sorted by most recently seen first, so the IPs that are still actively
+    hitting the server are at the top.
+
     Returns dicts (not just IPs) with enough context for the Reports list
     to render without a second query per row."""
+    cutoff = int(time.time()) - max_age_days * 86400 if max_age_days > 0 else 0
     with get_conn() as conn:
         rows = conn.execute(
             """
@@ -565,11 +574,12 @@ def report_candidates(threshold: int, limit: int = 50) -> list[dict]:
             WHERE (origin IS NULL OR origin = 'crowdsec')
             GROUP BY ip
             HAVING COUNT(*) >= ?
+              AND MAX(created_at) >= ?
               AND ip NOT IN (SELECT ip FROM abuse_reports WHERE status = 'sent')
-            ORDER BY times_banned DESC, last_seen DESC
+            ORDER BY last_seen DESC, times_banned DESC
             LIMIT ?
             """,
-            (threshold, limit),
+            (threshold, cutoff, limit),
         ).fetchall()
         return [dict(row) for row in rows]
 

@@ -120,3 +120,24 @@ def save_smtp_settings(
             password_rejected = True
     db.set_settings(values)
     return password_rejected
+
+
+# --- Reports page -----------------------------------------------------------
+# Same env-default / DB-override pattern as the SMTP fields above, but kept
+# separate from SmtpSettings since it has nothing to do with sending mail.
+
+_REPORT_MAX_AGE_KEY = "report_max_age_days"
+
+
+def get_report_max_age_days() -> int:
+    raw = db.get_settings([_REPORT_MAX_AGE_KEY]).get(_REPORT_MAX_AGE_KEY)
+    if raw is None or raw == "":
+        return env_settings.report_max_age_days
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return env_settings.report_max_age_days
+
+
+def save_report_max_age_days(days: int) -> None:
+    db.set_settings({_REPORT_MAX_AGE_KEY: str(max(0, days))})
