@@ -1,0 +1,36 @@
+<div id="abuseipdb-settings-wrap">
+    {% if abuseipdb_saved %}
+    <p class="save-banner">Saved.</p>
+    {% endif %}
+    {% if not abuseipdb.has_key %}
+    <p class="filter-hint settings-warning">
+        No API key configured. Set the <code>ABUSEIPDB_API_KEY</code> environment
+        variable (free key from abuseipdb.com) and restart the container to turn
+        this on.
+    </p>
+    {% else %}
+    <form class="settings-form"
+          hx-post="/settings/abuseipdb"
+          hx-target="#abuseipdb-settings-wrap"
+          hx-swap="outerHTML">
+        <div class="settings-row">
+            <label>
+                <input type="checkbox" name="abuseipdb_enabled" {{ 'checked' if abuseipdb_switch }}>
+                Look up repeat offenders on AbuseIPDB
+            </label>
+            <p class="filter-hint">Turning this off stops all new lookups. Scores already cached stay visible.</p>
+        </div>
+        <button type="submit" class="pager-btn">Save</button>
+    </form>
+    <p class="filter-hint">
+        Used today: <strong>{{ abuseipdb.used_today }}</strong> / {{ abuseipdb.daily_limit }}
+        (UTC day){% if abuseipdb.api_remaining is not none %} · AbuseIPDB says {{ abuseipdb.api_remaining }} left{% endif %}
+        · cached results reused for {{ abuseipdb.cache_days }} days.
+    </p>
+    {% if abuseipdb.paused_until %}
+    <p class="filter-hint settings-warning">Paused until {{ abuseipdb.paused_until | ts }}{% if abuseipdb.last_error %}: {{ abuseipdb.last_error }}{% endif %}</p>
+    {% elif abuseipdb.last_error %}
+    <p class="filter-hint settings-warning">Last error: {{ abuseipdb.last_error }}</p>
+    {% endif %}
+    {% endif %}
+</div>

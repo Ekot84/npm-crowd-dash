@@ -54,6 +54,25 @@ CREATE TABLE IF NOT EXISTS settings (
 -- poller._maybe_escalate). Upserted, not append-only like abuse_reports —
 -- there's only one thing to escalate to (the long ban), so only the latest
 -- attempt matters; status='sent' is what blocks re-escalating the same IP.
+-- Cached AbuseIPDB /check answers, one row per IP (see app/abuseipdb.py).
+-- checked_at drives the re-check rule: only re-looked-up once older than
+-- ABUSEIPDB_CACHE_DAYS *and* the IP has been banned again since.
+CREATE TABLE IF NOT EXISTS abuseipdb_cache (
+    ip TEXT PRIMARY KEY,
+    checked_at INTEGER NOT NULL,
+    score INTEGER,
+    total_reports INTEGER,
+    distinct_users INTEGER,
+    last_reported_at TEXT,
+    country TEXT,
+    isp TEXT,
+    usage_type TEXT,
+    domain TEXT,
+    is_tor INTEGER,
+    is_whitelisted INTEGER,
+    error TEXT
+);
+
 CREATE TABLE IF NOT EXISTS escalations (
     ip TEXT PRIMARY KEY,
     escalated_at INTEGER NOT NULL,
@@ -336,7 +355,16 @@ SORT_COLUMNS = {
     "last_seen": "last_seen",
     "country": "country",
     "as": "as_name",
+    "abuse": "abuse_score",
 }
+
+# Cached AbuseIPDB fields joined onto the per-IP aggregates (correlated
+# subqueries on the cache's primary key — cheap, and no GROUP BY fallout).
+_ABUSE_COLS = """
+                   (SELECT score FROM abuseipdb_cache a WHERE a.ip = bans.ip) AS abuse_score,
+                   (SELECT total_reports FROM abuseipdb_cache a WHERE a.ip = bans.ip) AS abuse_reports,
+                   (SELECT checked_at FROM abuseipdb_cache a WHERE a.ip = bans.ip) AS abuse_checked_at,
+                   (SELECT isp FROM abuseipdb_cache a WHERE a.ip = bans.ip) AS abuse_isp""".strip()
 
 
 def _order_by(sort: str | None, direction: str | None, default: str, allowed: tuple[str, ...]) -> str:
@@ -381,12 +409,13 @@ def stats_top_ips(
             f"""
             SELECT ip, COUNT(*) AS times_banned, MIN(created_at) AS first_seen,
                    MAX(created_at) AS last_seen, MAX(country) AS country,
-                   MAX(as_name) AS as_name, MAX(is_cloud_host) AS is_cloud_host
+                   MAX(as_name) AS as_name, MAX(is_cloud_host) AS is_cloud_host,
+                   {_ABUSE_COLS}
             FROM bans
             {where}
             GROUP BY ip
             HAVING COUNT(*) > 1
-            {_order_by(sort, direction, "times", ("ip", "times", "last_seen", "country", "as"))}
+            {_order_by(sort, direction, "times", ("ip", "times", "last_seen", "country", "as", "abuse"))}
             LIMIT ? OFFSET ?
             """,
             params,
@@ -600,14 +629,15 @@ def report_candidates(
         rows = conn.execute(
             f"""
             SELECT ip, COUNT(*) AS times_banned, MIN(created_at) AS first_seen,
-                   MAX(created_at) AS last_seen
+                   MAX(created_at) AS last_seen,
+                   {_ABUSE_COLS}
             FROM bans
             WHERE (origin IS NULL OR origin = 'crowdsec')
             GROUP BY ip
             HAVING COUNT(*) >= ?
               AND MAX(created_at) >= ?
               AND ip NOT IN (SELECT ip FROM abuse_reports WHERE status = 'sent')
-            {_order_by(sort, direction, "last_seen", ("ip", "times", "last_seen"))}
+            {_order_by(sort, direction, "last_seen", ("ip", "times", "last_seen", "abuse"))}
             LIMIT ?
             """,
             (threshold, cutoff, limit),
@@ -726,3 +756,54 @@ def set_settings(values: dict[str, str]) -> None:
                 """,
                 (key, value),
             )
+
+
+def abuseipdb_candidates(threshold: int, stale_before: int, limit: int = 15) -> list[str]:
+    """Repeat offenders (local-origin ban count >= threshold) that need an
+    AbuseIPDB lookup: never checked, or checked before `stale_before` *and*
+    banned again since that check. Most recently active first, so a fresh
+    offender gets its score before an old one."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT b.ip, MAX(b.created_at) AS last_seen, a.checked_at
+            FROM bans b
+            LEFT JOIN abuseipdb_cache a ON a.ip = b.ip
+            WHERE (b.origin IS NULL OR b.origin = 'crowdsec')
+            GROUP BY b.ip
+            HAVING COUNT(*) >= ?
+              AND (a.checked_at IS NULL
+                   OR (a.checked_at < ? AND MAX(b.created_at) > a.checked_at))
+            ORDER BY last_seen DESC
+            LIMIT ?
+            """,
+            (threshold, stale_before, limit),
+        ).fetchall()
+        return [r["ip"] for r in rows]
+
+
+def upsert_abuseipdb(ip: str, data: dict | None, *, error: str | None = None) -> None:
+    d = data or {}
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO abuseipdb_cache (ip, checked_at, score, total_reports, distinct_users,
+                last_reported_at, country, isp, usage_type, domain, is_tor, is_whitelisted, error)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(ip) DO UPDATE SET
+                checked_at = excluded.checked_at, score = excluded.score,
+                total_reports = excluded.total_reports, distinct_users = excluded.distinct_users,
+                last_reported_at = excluded.last_reported_at, country = excluded.country,
+                isp = excluded.isp, usage_type = excluded.usage_type, domain = excluded.domain,
+                is_tor = excluded.is_tor, is_whitelisted = excluded.is_whitelisted,
+                error = excluded.error
+            """,
+            (
+                ip, int(time.time()), d.get("abuseConfidenceScore"), d.get("totalReports"),
+                d.get("numDistinctUsers"), d.get("lastReportedAt"), d.get("countryCode"),
+                d.get("isp"), d.get("usageType"), d.get("domain"),
+                None if d.get("isTor") is None else int(bool(d.get("isTor"))),
+                None if d.get("isWhitelisted") is None else int(bool(d.get("isWhitelisted"))),
+                error,
+            ),
+        )

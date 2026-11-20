@@ -1,4 +1,5 @@
-{% from "partials/_sort.html" import sort_th %}
+{% from "partials/_sort.html" import sort_th, abuse_cell %}
+{% set show_abuse = abuseipdb_has_key() %}
 <div id="panel-repeat-offenders"
      hx-get="/partials/stats/panel?kind=repeat-offenders&period={{ period }}&offset={{ offset }}&sort={{ sort }}&dir={{ dir }}"
      hx-trigger="every 30s"
@@ -28,6 +29,7 @@
             {{ sort_th("Country", "country", sort, dir, ro_url, "#panel-repeat-offenders", "asc") }}
             {{ sort_th("AS", "as", sort, dir, ro_url, "#panel-repeat-offenders", "asc") }}
             {{ sort_th("Last seen", "last_seen", sort, dir, ro_url, "#panel-repeat-offenders") }}
+            {% if show_abuse %}{{ sort_th("AbuseIPDB", "abuse", sort, dir, ro_url, "#panel-repeat-offenders") }}{% endif %}
         </tr></thead>
         <tbody>
             {% for row in rows %}
@@ -37,10 +39,11 @@
                 <td>{{ row.country or "—" }}</td>
                 <td>{{ '☁ ' if row.is_cloud_host else '' }}{{ row.as_name or "—" }}</td>
                 <td class="mono">{{ row.last_seen_str }}</td>
+                {% if show_abuse %}{{ abuse_cell(row) }}{% endif %}
             </tr>
             {% if row.times_banned >= repeat_offender_threshold %}
             <tr class="hint-row">
-                <td colspan="5">
+                <td colspan="{{ 6 if show_abuse else 5 }}">
                     Banned {{ row.times_banned }} times
                     {% if row.is_cloud_host %}(on {{ row.as_name }} — check it's actually the same
                     attacker and not just churn within a shared hosting range) {% endif %}—
@@ -57,7 +60,7 @@
             </tr>
             {% endif %}
             {% else %}
-            <tr><td colspan="5" class="empty">No repeat offenders yet.</td></tr>
+            <tr><td colspan="{{ 6 if show_abuse else 5 }}" class="empty">No repeat offenders yet.</td></tr>
             {% endfor %}
         </tbody>
     </table>

@@ -9,6 +9,17 @@
 </div>
 
 <div class="stats-panel settings-panel">
+    <h2>AbuseIPDB</h2>
+    <p class="filter-hint">
+        Shows each repeat offender's AbuseIPDB score on Stats and Reports. Only
+        IPs banned {{ repeat_offender_threshold }}+ times are looked up, and every answer
+        is cached, to stay well inside the free tier (1,000 checks/day).
+        Informational only — nothing is banned or reported automatically.
+    </p>
+    {% include "partials/settings_abuseipdb_form.html" %}
+</div>
+
+<div class="stats-panel settings-panel">
     <h2>SMTP settings</h2>
     <p class="filter-hint">
         Used when you send an abuse report from the <a href="/reports">Reports</a>

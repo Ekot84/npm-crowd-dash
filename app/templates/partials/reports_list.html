@@ -1,4 +1,5 @@
-{% from "partials/_sort.html" import sort_th %}
+{% from "partials/_sort.html" import sort_th, abuse_cell %}
+{% set show_abuse = abuseipdb_has_key() %}
 <div id="reports-wrap" class="reports-panels">
     {% if message %}
     <p class="{{ 'save-banner' if message_ok else 'settings-warning' }}">{{ message }}</p>
@@ -28,6 +29,7 @@
                 {{ sort_th("IP", "ip", sort, dir, "/partials/reports?", "#reports-wrap", "asc") }}
                 {{ sort_th("Times banned", "times", sort, dir, "/partials/reports?", "#reports-wrap") }}
                 {{ sort_th("Last seen", "last_seen", sort, dir, "/partials/reports?", "#reports-wrap") }}
+                {% if show_abuse %}{{ sort_th("AbuseIPDB", "abuse", sort, dir, "/partials/reports?", "#reports-wrap") }}{% endif %}
                 <th></th>
             </tr></thead>
             <tbody>
@@ -36,6 +38,7 @@
                     <td class="mono">{{ row.ip }}</td>
                     <td class="mono">{{ row.times_banned }}</td>
                     <td class="mono">{{ row.last_seen_str }}</td>
+                    {% if show_abuse %}{{ abuse_cell(row) }}{% endif %}
                     <td>
                         <button type="button" class="pager-btn"
                                 hx-get="/partials/reports/review?ip={{ row.ip }}"
@@ -46,10 +49,10 @@
                     </td>
                 </tr>
                 <tr class="hint-row">
-                    <td colspan="4"><div id="review-{{ row.ip | replace('.', '_') }}"></div></td>
+                    <td colspan="{{ 5 if show_abuse else 4 }}"><div id="review-{{ row.ip | replace('.', '_') }}"></div></td>
                 </tr>
                 {% else %}
-                <tr><td colspan="4" class="empty">Nothing waiting to be reported.</td></tr>
+                <tr><td colspan="{{ 5 if show_abuse else 4 }}" class="empty">Nothing waiting to be reported.</td></tr>
                 {% endfor %}
             </tbody>
         </table>

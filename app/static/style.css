@@ -185,6 +185,11 @@ main {
     color: var(--red);
 }
 
+a.pill { text-decoration: none; }
+.abuse-high { background: rgba(224, 85, 97, 0.15); color: var(--red); }
+.abuse-mid  { background: rgba(217, 164, 65, 0.15); color: var(--amber); }
+.abuse-low  { background: rgba(76, 175, 125, 0.15); color: var(--green); }
+
 .empty {
     text-align: center;
     color: var(--muted);

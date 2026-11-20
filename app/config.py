@@ -37,6 +37,15 @@ class Settings(BaseSettings):
     repeat_offender_escalation_threshold: int = 8
     repeat_offender_escalation_duration: str = "8760h"
 
+    # AbuseIPDB reputation lookups (see app/abuseipdb.py). Off until a key is
+    # set. Only repeat offenders are looked up, each answer is cached for
+    # abuseipdb_cache_days, and lookups stop at abuseipdb_daily_limit per UTC
+    # day — kept below the free tier's 1,000 so there's headroom left for
+    # manual checks/reports on the AbuseIPDB website itself.
+    abuseipdb_api_key: str | None = None
+    abuseipdb_cache_days: int = 7
+    abuseipdb_daily_limit: int = 900
+
     # Used to actually send an abuse report from the Reports page (see
     # app/mailer.py) — nothing is ever emailed automatically. Set these (or
     # fill in the same fields on the Settings page) before the "Send report"

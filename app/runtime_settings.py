@@ -141,3 +141,20 @@ def get_report_max_age_days() -> int:
 
 def save_report_max_age_days(days: int) -> None:
     db.set_settings({_REPORT_MAX_AGE_KEY: str(max(0, days))})
+
+
+# --- AbuseIPDB --------------------------------------------------------------
+# On/off switch from the Settings page. The API key itself stays env-only
+# (ABUSEIPDB_API_KEY); this just lets someone pause lookups without touching
+# the container config. Defaults to on whenever a key is configured.
+
+_ABUSEIPDB_ENABLED_KEY = "abuseipdb_enabled"
+
+
+def get_abuseipdb_enabled() -> bool:
+    raw = db.get_settings([_ABUSEIPDB_ENABLED_KEY]).get(_ABUSEIPDB_ENABLED_KEY)
+    return raw != "0"
+
+
+def save_abuseipdb_enabled(enabled: bool) -> None:
+    db.set_settings({_ABUSEIPDB_ENABLED_KEY: "1" if enabled else "0"})

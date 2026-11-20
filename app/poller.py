@@ -8,7 +8,7 @@ from datetime import datetime
 
 import httpx
 
-from . import db
+from . import abuseipdb, db
 from .config import settings
 from .crowdsec_client import CrowdSecClient
 
@@ -353,6 +353,13 @@ async def poll_forever(stop_event: asyncio.Event) -> None:
                 await _backfill_missing_enrichment(client)
             except Exception:
                 log.exception("enrichment backfill failed")
+
+            # Runs in the background (never awaited here) so a slow or
+            # unreachable AbuseIPDB can never delay the poll loop itself.
+            try:
+                abuseipdb.start_batch_in_background()
+            except Exception:
+                log.exception("could not start AbuseIPDB batch")
 
             if last_poll_at - last_purge_at > _PURGE_INTERVAL_SECONDS:
                 try:

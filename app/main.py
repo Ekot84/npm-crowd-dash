@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import abuse, db, mailer, poller, reports, runtime_settings, secrets_store
+from . import abuse, abuseipdb, db, mailer, poller, reports, runtime_settings, secrets_store
 from .config import settings
 from .poller import poll_forever
 
@@ -19,6 +19,7 @@ log = logging.getLogger("main")
 
 BASE_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+templates.env.globals["abuseipdb_has_key"] = lambda: abuseipdb.has_key()
 
 _stop_event = asyncio.Event()
 
@@ -47,6 +48,9 @@ def _fmt_ts(ts: int | None) -> str:
     if not ts:
         return "—"
     return time.strftime("%Y-%m-%d %H:%M", time.localtime(ts))
+
+
+templates.env.filters["ts"] = _fmt_ts
 
 
 def _paginate(rows: list, offset: int) -> tuple[list, bool, bool]:
@@ -252,8 +256,8 @@ def _norm_sort(sort: str, direction: str, default: tuple[str, str], allowed: tup
     return sort, ("asc" if direction == "asc" else "desc")
 
 
-_REPORT_SORTS = ("ip", "times", "last_seen")
-_REPEAT_SORTS = ("ip", "times", "last_seen", "country", "as")
+_REPORT_SORTS = ("ip", "times", "last_seen", "abuse")
+_REPEAT_SORTS = ("ip", "times", "last_seen", "country", "as", "abuse")
 
 
 def _reports_context(
@@ -459,6 +463,9 @@ async def settings_page(request: Request):
             "active_page": "settings",
             "cfg": runtime_settings.get_smtp_settings(),
             "report_max_age_days": runtime_settings.get_report_max_age_days(),
+            "abuseipdb": abuseipdb.get_budget(),
+            "abuseipdb_switch": runtime_settings.get_abuseipdb_enabled(),
+            "repeat_offender_threshold": settings.repeat_offender_threshold,
             "saved": False,
             "password_rejected": False,
             "key_configured": secrets_store.is_key_configured(),
@@ -499,6 +506,19 @@ async def settings_reports_save(request: Request, report_max_age_days: int = For
     return templates.TemplateResponse(
         request, "partials/settings_reports_form.html",
         {"report_max_age_days": runtime_settings.get_report_max_age_days(), "reports_saved": True},
+    )
+
+
+@app.post("/settings/abuseipdb")
+async def settings_abuseipdb_save(request: Request, abuseipdb_enabled: str = Form("")):
+    runtime_settings.save_abuseipdb_enabled(abuseipdb_enabled == "on")
+    return templates.TemplateResponse(
+        request, "partials/settings_abuseipdb_form.html",
+        {
+            "abuseipdb": abuseipdb.get_budget(),
+            "abuseipdb_switch": runtime_settings.get_abuseipdb_enabled(),
+            "abuseipdb_saved": True,
+        },
     )
 
 
