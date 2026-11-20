@@ -31,6 +31,8 @@ services:
       ABUSEIPDB_BAN_MIN_SCORE: "${ABUSEIPDB_BAN_MIN_SCORE:-75}"
       ABUSEIPDB_BAN_MIN_BANS: "${ABUSEIPDB_BAN_MIN_BANS:-3}"
       ABUSEIPDB_BAN_DAYS: "${ABUSEIPDB_BAN_DAYS:-30}"
+      ABUSEIPDB_BAN_MIN_REPORTERS: "${ABUSEIPDB_BAN_MIN_REPORTERS:-50}"
+      ABUSEIPDB_BAN_IGNORE_WHITELIST: "${ABUSEIPDB_BAN_IGNORE_WHITELIST:-false}"
       # Used by the Reports page to send an abuse report you've reviewed
       # there — see .env.example. Nothing is emailed automatically.
       SMTP_HOST: "${SMTP_HOST:-}"

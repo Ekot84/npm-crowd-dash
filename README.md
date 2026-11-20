@@ -214,12 +214,23 @@ CrowdSec for IPs that are both bad locally and known bad elsewhere. Turn it
 on under **Settings → AbuseIPDB → Auto-ban**. An IP is banned when **all** of
 these hold:
 
-- its AbuseIPDB score is at least the minimum (default **75 %**) and it isn't
-  whitelisted on AbuseIPDB,
+- its AbuseIPDB score is at least the minimum (default **75 %**), **or** it
+  has at least the minimum number of distinct AbuseIPDB reporters in the last
+  90 days (default **50**, `0` = off),
+- it isn't in a range AbuseIPDB has whitelisted, unless **Also ban IPs in
+  ranges AbuseIPDB has whitelisted** is ticked (see below),
 - it has at least the minimum number of local bans (default **3**). Normal
   CrowdSec scenarios and AppSec bans both count; community-blocklist
   entries don't,
 - it isn't already under a ban escalated by this dashboard.
+
+**Whitelisted ranges.** AbuseIPDB whitelists some shared hosting ranges and
+forces their score to **0 %**, however many people report them. A real example:
+a scanner on such a range had 766 reports from 232 reporters and still showed
+0 %. The dashboard shows these as a grey **WL · N rep.** badge instead of a green
+0 %, so they don't look harmless. They're never auto-banned unless you tick the
+whitelist option. Then the reporter count, together with your own local bans,
+decides.
 
 The ban is a regular CrowdSec decision (scenario
 `npm-crowd-dash/abuseipdb-escalation`, default **30 days**), so every bouncer,
@@ -230,7 +241,8 @@ is listed under **Escalated bans** on the Reports page. To undo one early:
 
 The Settings page values override these env defaults:
 `ABUSEIPDB_BAN_ENABLED` (`false`), `ABUSEIPDB_BAN_MIN_SCORE` (`75`),
-`ABUSEIPDB_BAN_MIN_BANS` (`3`), `ABUSEIPDB_BAN_DAYS` (`30`).
+`ABUSEIPDB_BAN_MIN_BANS` (`3`), `ABUSEIPDB_BAN_DAYS` (`30`),
+`ABUSEIPDB_BAN_MIN_REPORTERS` (`50`), `ABUSEIPDB_BAN_IGNORE_WHITELIST` (`false`).
 
 
 ## Configuration reference
@@ -261,6 +273,8 @@ changed on the Settings page, and a value saved there wins over the env var.
 | `ABUSEIPDB_BAN_MIN_SCORE` | `75` | **UI.** Minimum score for auto-ban |
 | `ABUSEIPDB_BAN_MIN_BANS` | `3` | **UI.** Minimum local bans for auto-ban |
 | `ABUSEIPDB_BAN_DAYS` | `30` | **UI.** Auto-ban length |
+| `ABUSEIPDB_BAN_MIN_REPORTERS` | `50` | **UI.** Or: minimum distinct AbuseIPDB reporters (`0` = off) |
+| `ABUSEIPDB_BAN_IGNORE_WHITELIST` | `false` | **UI.** Also auto-ban IPs in AbuseIPDB-whitelisted ranges |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | — / `587` | **UI.** Sending abuse reports |
 | `SETTINGS_SECRET_KEY` | *(empty)* | Needed to save an SMTP password in the UI |
 

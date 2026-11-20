@@ -168,9 +168,14 @@ class AbuseBanSettings:
     min_score: int
     min_bans: int
     days: int
+    min_reporters: int
+    ignore_whitelist: bool
 
 
-_BAN_KEYS = ("abuseipdb_ban_enabled", "abuseipdb_ban_min_score", "abuseipdb_ban_min_bans", "abuseipdb_ban_days")
+_BAN_KEYS = (
+    "abuseipdb_ban_enabled", "abuseipdb_ban_min_score", "abuseipdb_ban_min_bans", "abuseipdb_ban_days",
+    "abuseipdb_ban_min_reporters", "abuseipdb_ban_ignore_whitelist",
+)
 
 
 def _int(raw: str | None, default: int, lo: int, hi: int) -> int:
@@ -188,13 +193,24 @@ def get_abuse_ban_settings() -> AbuseBanSettings:
         min_score=_int(s.get("abuseipdb_ban_min_score"), env_settings.abuseipdb_ban_min_score, 1, 100),
         min_bans=_int(s.get("abuseipdb_ban_min_bans"), env_settings.abuseipdb_ban_min_bans, 1, 1000),
         days=_int(s.get("abuseipdb_ban_days"), env_settings.abuseipdb_ban_days, 1, 3650),
+        min_reporters=_int(s.get("abuseipdb_ban_min_reporters"), env_settings.abuseipdb_ban_min_reporters, 0, 100000),
+        ignore_whitelist=(
+            env_settings.abuseipdb_ban_ignore_whitelist
+            if s.get("abuseipdb_ban_ignore_whitelist") is None
+            else s.get("abuseipdb_ban_ignore_whitelist") == "1"
+        ),
     )
 
 
-def save_abuse_ban_settings(*, enabled: bool, min_score: int, min_bans: int, days: int) -> None:
+def save_abuse_ban_settings(
+    *, enabled: bool, min_score: int, min_bans: int, days: int,
+    min_reporters: int = 0, ignore_whitelist: bool = False,
+) -> None:
     db.set_settings({
         "abuseipdb_ban_enabled": "1" if enabled else "0",
         "abuseipdb_ban_min_score": str(min(100, max(1, min_score))),
         "abuseipdb_ban_min_bans": str(max(1, min_bans)),
         "abuseipdb_ban_days": str(min(3650, max(1, days))),
+        "abuseipdb_ban_min_reporters": str(max(0, min_reporters)),
+        "abuseipdb_ban_ignore_whitelist": "1" if ignore_whitelist else "0",
     })

@@ -53,9 +53,21 @@
             <input type="number" id="ban_min_score" name="min_score" min="1" max="100" value="{{ ban.min_score }}">
         </div>
         <div class="settings-row">
+            <label for="ban_min_reporters">…or at least this many distinct reporters (last 90 days)</label>
+            <input type="number" id="ban_min_reporters" name="min_reporters" min="0" value="{{ ban.min_reporters }}">
+            <p class="filter-hint">Catches IPs many people report but whose score is low, e.g. because AbuseIPDB whitelists the hosting range. 0 = off.</p>
+        </div>
+        <div class="settings-row">
+            <label>
+                <input type="checkbox" name="ignore_whitelist" {{ 'checked' if ban.ignore_whitelist }}>
+                Also ban IPs in ranges AbuseIPDB has whitelisted
+            </label>
+            <p class="filter-hint">AbuseIPDB whitelists some shared hosting ranges and forces their score to 0. Off = never auto-ban those. On = ban them too when they meet the reporter count and local bans.</p>
+        </div>
+        <div class="settings-row">
             <label for="ban_min_bans">Minimum local bans</label>
             <input type="number" id="ban_min_bans" name="min_bans" min="1" value="{{ ban.min_bans }}">
-            <p class="filter-hint">Both conditions must be met. Only IPs that are also looked up (banned {{ repeat_offender_threshold }}+ times) ever have a score, so a value below that has no effect.</p>
+            <p class="filter-hint">Required on top of the score/reporter condition. Only IPs that are also looked up (banned {{ repeat_offender_threshold }}+ times) ever have a score, so a value below that has no effect.</p>
         </div>
         <div class="settings-row">
             <label for="ban_days">Ban length (days)</label>

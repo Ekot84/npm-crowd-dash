@@ -67,7 +67,7 @@
                 {% for e in escalations %}
                 <tr>
                     <td class="mono">{{ e.ip }}</td>
-                    <td>{{ e.kind }}{% if e.abuse_score is not none %} · {{ e.abuse_score }}%{% endif %}</td>
+                    <td>{{ e.kind }}{% if e.abuse_score is not none %} · {{ e.abuse_score }}%{% endif %}{% if e.abuse_reporters %} · {{ e.abuse_reporters }} rep.{% endif %}</td>
                     <td class="mono">{{ e.escalated_at | ts }}</td>
                     <td class="mono">{{ e.expires_at | ts if e.status == 'sent' else '—' }}</td>
                     <td class="mono">{{ e.times_banned_at_escalation }}</td>

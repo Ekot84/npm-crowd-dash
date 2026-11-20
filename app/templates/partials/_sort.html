@@ -17,11 +17,15 @@
    looked up, so most single-ban IPs will always show "—". #}
 {% macro abuse_cell(row) -%}
 <td class="mono">
-{%- if row.abuse_score is not none -%}
+{%- if row.abuse_wl -%}
+<a class="pill abuse-wl"
+   href="https://www.abuseipdb.com/check/{{ row.ip }}" target="_blank" rel="noopener noreferrer"
+   title="Whitelisted range on AbuseIPDB, so the score is forced to {{ row.abuse_score }}%, but reported {{ row.abuse_reports or 0 }} time(s) by {{ row.abuse_reporters or 0 }} reporter(s){{ ' · ' ~ row.abuse_isp if row.abuse_isp }} · checked {{ row.abuse_checked_at | ts }}">WL · {{ row.abuse_reporters or 0 }} rep.</a>
+{%- elif row.abuse_score is not none -%}
 {%- set sc = row.abuse_score -%}
 <a class="pill {{ 'abuse-high' if sc >= 75 else ('abuse-mid' if sc >= 25 else 'abuse-low') }}"
    href="https://www.abuseipdb.com/check/{{ row.ip }}" target="_blank" rel="noopener noreferrer"
-   title="{{ row.abuse_reports or 0 }} report(s) on AbuseIPDB{{ ' · ' ~ row.abuse_isp if row.abuse_isp }} · checked {{ row.abuse_checked_at | ts }}">{{ sc }}%</a>
+   title="{{ row.abuse_reports or 0 }} report(s) from {{ row.abuse_reporters or 0 }} reporter(s) on AbuseIPDB{{ ' · ' ~ row.abuse_isp if row.abuse_isp }} · checked {{ row.abuse_checked_at | ts }}">{{ sc }}%</a>
 {%- else -%}—{%- endif -%}
 </td>
 {%- endmacro %}

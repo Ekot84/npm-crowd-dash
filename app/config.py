@@ -55,6 +55,13 @@ class Settings(BaseSettings):
     abuseipdb_ban_min_score: int = 75
     abuseipdb_ban_min_bans: int = 3
     abuseipdb_ban_days: int = 30
+    # Alternative trigger: this many distinct AbuseIPDB reporters (last 90
+    # days) also qualifies, even when the score is low. 0 = off.
+    abuseipdb_ban_min_reporters: int = 50
+    # AbuseIPDB whitelists some hosting ranges, forcing their score to 0.
+    # By default those are never auto-banned; set this to ban them anyway
+    # when they meet the reporter count.
+    abuseipdb_ban_ignore_whitelist: bool = False
 
     # Used to actually send an abuse report from the Reports page (see
     # app/mailer.py) — nothing is ever emailed automatically. Set these (or

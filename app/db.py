@@ -139,6 +139,8 @@ def _migrate_escalations(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE escalations ADD COLUMN kind TEXT NOT NULL DEFAULT 'repeat'")
     if "abuse_score" not in cols:
         conn.execute("ALTER TABLE escalations ADD COLUMN abuse_score INTEGER")
+    if "abuse_reporters" not in cols:
+        conn.execute("ALTER TABLE escalations ADD COLUMN abuse_reporters INTEGER")
     for row in conn.execute(
         "SELECT ip, escalated_at, decision_duration FROM escalations WHERE expires_at IS NULL"
     ).fetchall():
@@ -399,7 +401,9 @@ _ABUSE_COLS = """
                    (SELECT score FROM abuseipdb_cache a WHERE a.ip = bans.ip) AS abuse_score,
                    (SELECT total_reports FROM abuseipdb_cache a WHERE a.ip = bans.ip) AS abuse_reports,
                    (SELECT checked_at FROM abuseipdb_cache a WHERE a.ip = bans.ip) AS abuse_checked_at,
-                   (SELECT isp FROM abuseipdb_cache a WHERE a.ip = bans.ip) AS abuse_isp""".strip()
+                   (SELECT isp FROM abuseipdb_cache a WHERE a.ip = bans.ip) AS abuse_isp,
+                   (SELECT distinct_users FROM abuseipdb_cache a WHERE a.ip = bans.ip) AS abuse_reporters,
+                   (SELECT is_whitelisted FROM abuseipdb_cache a WHERE a.ip = bans.ip) AS abuse_wl""".strip()
 
 
 def _order_by(sort: str | None, direction: str | None, default: str, allowed: tuple[str, ...]) -> str:
@@ -751,7 +755,7 @@ def has_active_escalation(ip: str) -> bool:
 
 def record_escalation(
     ip: str, *, times_banned: int, duration: str, status: str,
-    kind: str = "repeat", abuse_score: int | None = None,
+    kind: str = "repeat", abuse_score: int | None = None, abuse_reporters: int | None = None,
 ) -> None:
     """status is 'sent' or 'failed'. Upserts by ip — only the latest
     escalation per IP matters (is it still running, and why was it made)."""
@@ -760,8 +764,8 @@ def record_escalation(
         conn.execute(
             """
             INSERT INTO escalations (ip, escalated_at, times_banned_at_escalation, decision_duration,
-                                     status, expires_at, kind, abuse_score)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                     status, expires_at, kind, abuse_score, abuse_reporters)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(ip) DO UPDATE SET
                 escalated_at = excluded.escalated_at,
                 times_banned_at_escalation = excluded.times_banned_at_escalation,
@@ -769,16 +773,25 @@ def record_escalation(
                 status = excluded.status,
                 expires_at = excluded.expires_at,
                 kind = excluded.kind,
-                abuse_score = excluded.abuse_score
+                abuse_score = excluded.abuse_score,
+                abuse_reporters = excluded.abuse_reporters
             """,
-            (ip, now, times_banned, duration, status, now + _go_duration_seconds(duration), kind, abuse_score),
+            (ip, now, times_banned, duration, status, now + _go_duration_seconds(duration), kind,
+             abuse_score, abuse_reporters),
         )
 
 
-def abuseipdb_ban_candidates(min_score: int, min_bans: int, limit: int = 10) -> list[dict]:
+def abuseipdb_ban_candidates(
+    min_score: int, min_bans: int, limit: int = 10,
+    min_reporters: int = 0, ignore_whitelist: bool = False,
+) -> list[dict]:
     """IPs that qualify for an AbuseIPDB-based escalation ban:
     - at least `min_bans` local-origin bans (CAPI/lists/cscli never count),
-    - a cached AbuseIPDB score >= `min_score`, not whitelisted there,
+    - a cached AbuseIPDB score >= `min_score`, OR (if min_reporters > 0) at
+      least that many distinct reporters in the last 90 days — catches
+      scanners on AbuseIPDB-whitelisted hosting ranges, whose score is
+      forced to 0 no matter how many people report them,
+    - not whitelisted on AbuseIPDB, unless ignore_whitelist is set,
     - and no escalation currently running. An IP whose earlier escalation
       has expired only qualifies again once it has been banned locally
       *after* that expiry (i.e. it actually came back).
@@ -789,14 +802,15 @@ def abuseipdb_ban_candidates(min_score: int, min_bans: int, limit: int = 10) -> 
         rows = conn.execute(
             """
             SELECT b.ip, COUNT(*) AS times_banned, MAX(b.created_at) AS last_seen,
-                   a.score AS score, e.status AS e_status, e.expires_at AS e_expires,
+                   a.score AS score, a.distinct_users AS reporters, a.is_whitelisted AS wl,
+                   e.status AS e_status, e.expires_at AS e_expires,
                    e.escalated_at AS e_at
             FROM bans b
             JOIN abuseipdb_cache a ON a.ip = b.ip
             LEFT JOIN escalations e ON e.ip = b.ip
             WHERE (b.origin IS NULL OR b.origin = 'crowdsec')
-              AND a.score >= ?
-              AND COALESCE(a.is_whitelisted, 0) = 0
+              AND (a.score >= ? OR (? > 0 AND COALESCE(a.distinct_users, 0) >= ?))
+              AND (? = 1 OR COALESCE(a.is_whitelisted, 0) = 0)
               AND a.error IS NULL
             GROUP BY b.ip
             HAVING COUNT(*) >= ?
@@ -808,7 +822,8 @@ def abuseipdb_ban_candidates(min_score: int, min_bans: int, limit: int = 10) -> 
             ORDER BY last_seen DESC
             LIMIT ?
             """,
-            (min_score, min_bans, now - 3600, now, limit),
+            (min_score, min_reporters, min_reporters, int(ignore_whitelist),
+             min_bans, now - 3600, now, limit),
         ).fetchall()
         return [dict(r) for r in rows]
 
@@ -818,7 +833,7 @@ def escalation_history(limit: int = 50) -> list[dict]:
         rows = conn.execute(
             """
             SELECT ip, escalated_at, expires_at, times_banned_at_escalation, decision_duration,
-                   status, kind, abuse_score
+                   status, kind, abuse_score, abuse_reporters
             FROM escalations
             ORDER BY escalated_at DESC
             LIMIT ?

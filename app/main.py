@@ -535,9 +535,12 @@ async def settings_abuseipdb_ban_save(
     min_score: int = Form(75),
     min_bans: int = Form(3),
     days: int = Form(30),
+    min_reporters: int = Form(0),
+    ignore_whitelist: str = Form(""),
 ):
     runtime_settings.save_abuse_ban_settings(
-        enabled=enabled == "on", min_score=min_score, min_bans=min_bans, days=days
+        enabled=enabled == "on", min_score=min_score, min_bans=min_bans, days=days,
+        min_reporters=min_reporters, ignore_whitelist=ignore_whitelist == "on",
     )
     return templates.TemplateResponse(
         request, "partials/settings_abuseipdb_form.html",

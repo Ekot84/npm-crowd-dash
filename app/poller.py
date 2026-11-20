@@ -254,17 +254,23 @@ async def _escalate_abuseipdb(client: CrowdSecClient) -> None:
 
     It's a regular CrowdSec decision, so every bouncer (e.g. NPMplus) blocks
     the IP for everything, whether it was caught by a normal scenario or by
-    AppSec. Never acts on whitelisted (on AbuseIPDB) or private addresses
-    (those are never looked up, so never have a score)."""
+    AppSec. Never acts on private addresses (never looked up, so never have a
+    score), and only on AbuseIPDB-whitelisted ranges if explicitly allowed."""
     if not abuseipdb.is_enabled():
         return
     cfg = runtime_settings.get_abuse_ban_settings()
     if not cfg.enabled:
         return
     duration = f"{cfg.days * 24}h"
-    for row in db.abuseipdb_ban_candidates(cfg.min_score, cfg.min_bans, limit=_ABUSEIPDB_BANS_PER_CYCLE):
+    for row in db.abuseipdb_ban_candidates(
+        cfg.min_score, cfg.min_bans, limit=_ABUSEIPDB_BANS_PER_CYCLE,
+        min_reporters=cfg.min_reporters, ignore_whitelist=cfg.ignore_whitelist,
+    ):
         ip = row["ip"]
-        reason = f"AbuseIPDB {row['score']}%, {row['times_banned']} local bans"
+        reason = (
+            f"AbuseIPDB {row['score']}%, {row['reporters'] or 0} reporters"
+            f"{' (whitelisted range)' if row['wl'] else ''}, {row['times_banned']} local bans"
+        )
         try:
             await client.add_manual_ban(
                 ip, duration=duration, reason=reason,
@@ -273,10 +279,12 @@ async def _escalate_abuseipdb(client: CrowdSecClient) -> None:
         except Exception:
             log.exception("failed to push AbuseIPDB escalation ban for %s", ip)
             db.record_escalation(ip, times_banned=row["times_banned"], duration=duration,
-                                 status="failed", kind="abuseipdb", abuse_score=row["score"])
+                                 status="failed", kind="abuseipdb", abuse_score=row["score"],
+                                 abuse_reporters=row["reporters"])
             continue
         db.record_escalation(ip, times_banned=row["times_banned"], duration=duration,
-                             status="sent", kind="abuseipdb", abuse_score=row["score"])
+                             status="sent", kind="abuseipdb", abuse_score=row["score"],
+                             abuse_reporters=row["reporters"])
         log.info("AbuseIPDB escalation: banned %s for %s (%s)", ip, duration, reason)
 
 
