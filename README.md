@@ -15,7 +15,8 @@ FastAPI + HTMX (single container, no JS build step).
   hosting provider (AS), and **Repeat offenders**: IPs banned more than once,
   with a time-period filter, a ready-to-paste `cscli` command for a long ban,
   and an optional AbuseIPDB score.
-- **Bans**: the full ban history (active and expired), filterable.
+- **Bans**: the full ban history (active and expired), filterable. IPs with a
+  cached AbuseIPDB result get a small score badge (or **WL**) next to the IP.
 - **Reports**: a queue of repeat offenders to report to their network's abuse
   contact (reviewed and sent by you), the report history, and the list of
   **escalated bans** this dashboard has pushed to CrowdSec.

@@ -111,11 +111,14 @@ async def bans_table(
         ip=ip, source_type=source_type, country=country, scenario=scenario, status=status, limit=limit
     )
     rows = [_row_to_dict(r) for r in rows_raw]
+    # Cached AbuseIPDB scores for the IPs on this page (one query, no lookups).
+    abuse = db.abuseipdb_for_ips([r["ip"] for r in rows])
     return templates.TemplateResponse(
         request,
         "partials/bans_table.html",
         {
             "bans": rows,
+            "abuse": abuse,
             "ip": ip or "",
             "source_type": source_type or "",
             "country": country or "",

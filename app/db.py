@@ -918,3 +918,24 @@ def upsert_abuseipdb(ip: str, data: dict | None, *, error: str | None = None) ->
                 error,
             ),
         )
+
+
+def abuseipdb_for_ips(ips: list[str]) -> dict[str, dict]:
+    """Cached AbuseIPDB fields for a page of IPs, keyed by IP, using the same
+    abuse_* names as _ABUSE_COLS so templates can share one macro. Cache
+    only — never triggers a lookup. IPs without a cached answer are absent."""
+    ips = list(dict.fromkeys(ips))
+    if not ips:
+        return {}
+    with get_conn() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT ip, score AS abuse_score, total_reports AS abuse_reports,
+                   checked_at AS abuse_checked_at, isp AS abuse_isp,
+                   distinct_users AS abuse_reporters, is_whitelisted AS abuse_wl
+            FROM abuseipdb_cache
+            WHERE error IS NULL AND ip IN ({",".join("?" * len(ips))})
+            """,
+            ips,
+        ).fetchall()
+        return {r["ip"]: dict(r) for r in rows}

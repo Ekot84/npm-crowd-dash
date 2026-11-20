@@ -1,3 +1,4 @@
+{% from "partials/_sort.html" import abuse_pill %}
 <table class="bans-table">
     <thead>
         <tr>
@@ -14,7 +15,7 @@
     <tbody>
         {% for ban in bans %}
         <tr class="{{ 'row-active' if ban.is_active else 'row-expired' }}">
-            <td class="mono">{{ ban.ip }}</td>
+            <td class="mono">{{ ban.ip }}{% if abuse[ban.ip] %} {{ abuse_pill(abuse[ban.ip], compact=true, empty="") }}{% endif %}</td>
             <td><span class="badge badge-{{ ban.source_type }}">{{ ban.source_type }}</span></td>
             <td>
                 <div class="scenario">{{ ban.scenario or "—" }}</div>

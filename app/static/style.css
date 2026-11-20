@@ -189,6 +189,7 @@ a.pill { text-decoration: none; }
 .abuse-high { background: rgba(224, 85, 97, 0.15); color: var(--red); }
 .abuse-mid  { background: rgba(217, 164, 65, 0.15); color: var(--amber); }
 .abuse-low  { background: rgba(76, 175, 125, 0.15); color: var(--green); }
+.abuse-compact { font-size: 0.68rem; padding: 0.05rem 0.4rem; margin-left: 0.3rem; vertical-align: 1px; }
 .abuse-wl   { background: rgba(139, 148, 158, 0.18); color: var(--muted); white-space: nowrap; }
 
 .empty {
