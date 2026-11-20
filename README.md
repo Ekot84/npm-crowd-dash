@@ -94,6 +94,72 @@ field disabled with an explanation, and refuses to save a new password
 until the key is configured. Setting it is a one-time step — generate the
 key, set the env var, restart the container.
 
+## AbuseIPDB scores (optional)
+
+The dashboard can show each repeat offender's [AbuseIPDB](https://www.abuseipdb.com)
+confidence score, a sortable **AbuseIPDB** column on Stats → Repeat offenders
+and on the Reports page. The score links to the IP's AbuseIPDB page. This is
+informational only: nothing is banned or reported automatically.
+
+### 1. Get an API key
+
+1. Create a free account at <https://www.abuseipdb.com/register>.
+2. Go to **Account → API** (<https://www.abuseipdb.com/account/api>) and click
+   **Create Key**. Give it any name, e.g. `npm-crowd-dash`.
+3. Copy the key. Treat it like a password and don't commit it to git.
+
+### 2. Add it to the container
+
+**Docker Compose / `.env`:**
+
+```env
+ABUSEIPDB_API_KEY=your-key-here
+```
+
+Then `docker compose up -d` to restart with the new variable.
+
+**Unraid (existing container):** an installed container doesn't pick up new
+fields from the template, so add the variable by hand:
+
+1. **Docker** tab → click the container → **Edit**.
+2. At the bottom: **Add another Path, Port, Variable or Device**.
+3. Config Type **Variable**, Name `AbuseIPDB API Key`, Key `ABUSEIPDB_API_KEY`,
+   Value = your key. Set **Mask** to *Yes* so it's hidden in the UI.
+4. **Add**, then **Apply**. The container restarts with the key.
+
+New installs from the template in `unraid-template/` already have the
+**AbuseIPDB API Key** field. Just fill it in.
+
+### 3. Check that it works
+
+Open **Settings**. The **AbuseIPDB** panel shows an on/off switch, how many
+lookups have been used today, and any pause or error, such as a rejected key.
+Scores start appearing within a few poll cycles for IPs that have reached
+`REPEAT_OFFENDER_THRESHOLD` bans. To stop lookups without removing the key,
+untick the switch and Save. Already-cached scores stay visible.
+
+### How it stays inside the free tier
+
+The free plan allows 1,000 checks per day. The dashboard keeps well below that:
+
+- **Only repeat offenders are looked up:** IPs banned
+  `REPEAT_OFFENDER_THRESHOLD`+ times locally. Community-blocklist (CAPI)
+  entries and private/LAN addresses are never sent.
+- **Every answer is cached per IP.** A cached IP is only looked up again once
+  the cache is older than `ABUSEIPDB_CACHE_DAYS` **and** the IP has been
+  banned again since. An IP that never comes back is checked once.
+- **Daily budget:** lookups stop at `ABUSEIPDB_DAILY_LIMIT` per UTC day.
+  AbuseIPDB's own remaining-quota header is honored too, and a `429 Too Many
+  Requests` pauses all lookups until AbuseIPDB's reset time.
+- Lookups run in small background batches, so a slow or unreachable AbuseIPDB
+  never delays the CrowdSec poller.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `ABUSEIPDB_API_KEY` | *(empty = off)* | Your AbuseIPDB API key |
+| `ABUSEIPDB_CACHE_DAYS` | `7` | How long a cached score is reused before a re-check (only if banned again) |
+| `ABUSEIPDB_DAILY_LIMIT` | `900` | Max lookups per UTC day; leaves headroom for manual checks on the website |
+
 ## Notes
 
 - AppSec/WAF blocks (e.g. from `crowdsecurity/appsec-virtual-patching`) are
