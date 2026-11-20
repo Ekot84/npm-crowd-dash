@@ -281,6 +281,8 @@ def _reports_context(
         "history": history,
         "repeat_offender_threshold": settings.repeat_offender_threshold,
         "report_max_age_days": max_age_days,
+        "escalations": db.escalation_history(limit=_REPORTS_HISTORY_LIMIT),
+        "now": int(time.time()),
         "sort": sort,
         "dir": direction,
         "message": message,
@@ -463,9 +465,7 @@ async def settings_page(request: Request):
             "active_page": "settings",
             "cfg": runtime_settings.get_smtp_settings(),
             "report_max_age_days": runtime_settings.get_report_max_age_days(),
-            "abuseipdb": abuseipdb.get_budget(),
-            "abuseipdb_switch": runtime_settings.get_abuseipdb_enabled(),
-            "repeat_offender_threshold": settings.repeat_offender_threshold,
+            **_abuseipdb_panel_context(),
             "saved": False,
             "password_rejected": False,
             "key_configured": secrets_store.is_key_configured(),
@@ -509,16 +509,39 @@ async def settings_reports_save(request: Request, report_max_age_days: int = For
     )
 
 
+def _abuseipdb_panel_context(**extra) -> dict:
+    return {
+        "abuseipdb": abuseipdb.get_budget(),
+        "abuseipdb_switch": runtime_settings.get_abuseipdb_enabled(),
+        "ban": runtime_settings.get_abuse_ban_settings(),
+        "repeat_offender_threshold": settings.repeat_offender_threshold,
+        **extra,
+    }
+
+
 @app.post("/settings/abuseipdb")
 async def settings_abuseipdb_save(request: Request, abuseipdb_enabled: str = Form("")):
     runtime_settings.save_abuseipdb_enabled(abuseipdb_enabled == "on")
     return templates.TemplateResponse(
         request, "partials/settings_abuseipdb_form.html",
-        {
-            "abuseipdb": abuseipdb.get_budget(),
-            "abuseipdb_switch": runtime_settings.get_abuseipdb_enabled(),
-            "abuseipdb_saved": True,
-        },
+        _abuseipdb_panel_context(abuseipdb_saved=True),
+    )
+
+
+@app.post("/settings/abuseipdb-ban")
+async def settings_abuseipdb_ban_save(
+    request: Request,
+    enabled: str = Form(""),
+    min_score: int = Form(75),
+    min_bans: int = Form(3),
+    days: int = Form(30),
+):
+    runtime_settings.save_abuse_ban_settings(
+        enabled=enabled == "on", min_score=min_score, min_bans=min_bans, days=days
+    )
+    return templates.TemplateResponse(
+        request, "partials/settings_abuseipdb_form.html",
+        _abuseipdb_panel_context(abuseipdb_saved=True),
     )
 
 

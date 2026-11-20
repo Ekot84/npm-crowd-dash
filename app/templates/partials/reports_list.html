@@ -59,6 +59,32 @@
     </div>
 
     <div class="stats-panel">
+        <h2>Escalated bans</h2>
+        <p class="filter-hint">Long bans this dashboard pushed to CrowdSec: <em>repeat</em> = local ban count reached the escalation threshold, <em>abuseipdb</em> = AbuseIPDB auto-ban (Settings). Latest escalation per IP.</p>
+        <table class="stats-table">
+            <thead><tr><th>IP</th><th>Why</th><th>Banned</th><th>Until</th><th>Local bans</th><th>Status</th></tr></thead>
+            <tbody>
+                {% for e in escalations %}
+                <tr>
+                    <td class="mono">{{ e.ip }}</td>
+                    <td>{{ e.kind }}{% if e.abuse_score is not none %} · {{ e.abuse_score }}%{% endif %}</td>
+                    <td class="mono">{{ e.escalated_at | ts }}</td>
+                    <td class="mono">{{ e.expires_at | ts if e.status == 'sent' else '—' }}</td>
+                    <td class="mono">{{ e.times_banned_at_escalation }}</td>
+                    <td>
+                        {% if e.status != 'sent' %}<span class="pill pill-expired">failed</span>
+                        {% elif e.expires_at and e.expires_at > now %}<span class="pill pill-active">active</span>
+                        {% else %}<span class="pill">expired</span>{% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="empty">Nothing escalated yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="stats-panel">
         <h2>Report history</h2>
         <p class="filter-hint">Every send attempt from this page, newest first — including every retry for an IP that failed before eventually sending (or is still pending a retry).</p>
         <table class="stats-table">

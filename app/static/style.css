@@ -401,6 +401,13 @@ a.pill { text-decoration: none; }
     margin-top: 1.25rem;
 }
 
+.settings-subhead {
+    font-size: 0.95rem;
+    margin: 1.4rem 0 0;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+}
+
 .settings-form {
     margin-top: 1rem;
 }

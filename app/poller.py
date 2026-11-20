@@ -8,7 +8,7 @@ from datetime import datetime
 
 import httpx
 
-from . import abuseipdb, db
+from . import abuseipdb, db, runtime_settings
 from .config import settings
 from .crowdsec_client import CrowdSecClient
 
@@ -222,15 +222,15 @@ async def _maybe_escalate(client: CrowdSecClient, ip: str) -> None:
     threshold, push a long-duration ban straight to CrowdSec instead of
     waiting for the normal short duration to lapse and the same IP to come
     back and earn another one. Fires at most once per IP (guarded by
-    db.has_sent_escalation) — later local bans against an already-escalated
-    IP don't re-trigger this, they just accumulate under an IP that's
-    already on a long ban. A failed push is retried the next time this IP
+    db.has_active_escalation) — later local bans against an IP whose
+    escalation is still running don't re-trigger this. Once that ban has
+    expired, a new local ban can escalate it again. A failed push is retried the next time this IP
     earns another local ban, not immediately, since bans for the same IP
     are usually spaced well apart."""
     count = db.local_ban_count(ip)
     if count < settings.repeat_offender_escalation_threshold:
         return
-    if db.has_sent_escalation(ip):
+    if db.has_active_escalation(ip):
         return
     duration = settings.repeat_offender_escalation_duration
     try:
@@ -241,6 +241,43 @@ async def _maybe_escalate(client: CrowdSecClient, ip: str) -> None:
         return
     db.record_escalation(ip, times_banned=count, duration=duration, status="sent")
     log.info("escalated repeat offender %s (%d local bans) to a %s ban", ip, count, duration)
+
+
+_ABUSEIPDB_BANS_PER_CYCLE = 10
+
+
+async def _escalate_abuseipdb(client: CrowdSecClient) -> None:
+    """AbuseIPDB-based auto-ban (opt-in on the Settings page). Pushes a
+    time-limited ban to CrowdSec for IPs with enough local bans *and* a high
+    enough cached AbuseIPDB score — see db.abuseipdb_ban_candidates for the
+    exact rule, including re-escalation after an earlier ban expired.
+
+    It's a regular CrowdSec decision, so every bouncer (e.g. NPMplus) blocks
+    the IP for everything, whether it was caught by a normal scenario or by
+    AppSec. Never acts on whitelisted (on AbuseIPDB) or private addresses
+    (those are never looked up, so never have a score)."""
+    if not abuseipdb.is_enabled():
+        return
+    cfg = runtime_settings.get_abuse_ban_settings()
+    if not cfg.enabled:
+        return
+    duration = f"{cfg.days * 24}h"
+    for row in db.abuseipdb_ban_candidates(cfg.min_score, cfg.min_bans, limit=_ABUSEIPDB_BANS_PER_CYCLE):
+        ip = row["ip"]
+        reason = f"AbuseIPDB {row['score']}%, {row['times_banned']} local bans"
+        try:
+            await client.add_manual_ban(
+                ip, duration=duration, reason=reason,
+                scenario="npm-crowd-dash/abuseipdb-escalation",
+            )
+        except Exception:
+            log.exception("failed to push AbuseIPDB escalation ban for %s", ip)
+            db.record_escalation(ip, times_banned=row["times_banned"], duration=duration,
+                                 status="failed", kind="abuseipdb", abuse_score=row["score"])
+            continue
+        db.record_escalation(ip, times_banned=row["times_banned"], duration=duration,
+                             status="sent", kind="abuseipdb", abuse_score=row["score"])
+        log.info("AbuseIPDB escalation: banned %s for %s (%s)", ip, duration, reason)
 
 
 _MAX_CONCURRENT_ALERT_LOOKUPS = 10
@@ -360,6 +397,11 @@ async def poll_forever(stop_event: asyncio.Event) -> None:
                 abuseipdb.start_batch_in_background()
             except Exception:
                 log.exception("could not start AbuseIPDB batch")
+
+            try:
+                await _escalate_abuseipdb(client)
+            except Exception:
+                log.exception("AbuseIPDB escalation pass failed")
 
             if last_poll_at - last_purge_at > _PURGE_INTERVAL_SECONDS:
                 try:

@@ -72,7 +72,10 @@ class CrowdSecClient:
         alerts = resp.json() or []
         return alerts[0] if alerts else None
 
-    async def add_manual_ban(self, ip: str, *, duration: str, reason: str) -> dict:
+    async def add_manual_ban(
+        self, ip: str, *, duration: str, reason: str,
+        scenario: str = "npm-crowd-dash/repeat-offender-escalation",
+    ) -> dict:
         """Pushes a manual ban decision straight to CrowdSec's LAPI, using
         the same watcher/machine login already used by get_latest_alert_for_ip
         — this is the same "trusted machine" mechanism CrowdSec's own local
@@ -93,10 +96,10 @@ class CrowdSecClient:
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         payload = [
             {
-                "scenario": "npm-crowd-dash/repeat-offender-escalation",
+                "scenario": scenario,
                 "scenario_hash": "",
                 "scenario_version": "",
-                "message": f"npm-crowd-dash: escalating repeat offender {ip} ({reason})",
+                "message": f"npm-crowd-dash: escalating {ip} ({reason})",
                 "events": [],
                 "events_count": 0,
                 "capacity": 0,
@@ -112,7 +115,7 @@ class CrowdSecClient:
                         "value": ip,
                         "duration": duration,
                         "origin": "cscli",
-                        "scenario": "npm-crowd-dash/repeat-offender-escalation",
+                        "scenario": scenario,
                     }
                 ],
             }

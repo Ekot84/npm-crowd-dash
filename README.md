@@ -160,6 +160,35 @@ The free plan allows 1,000 checks per day. The dashboard keeps well below that:
 | `ABUSEIPDB_CACHE_DAYS` | `7` | How long a cached score is reused before a re-check (only if banned again) |
 | `ABUSEIPDB_DAILY_LIMIT` | `900` | Max lookups per UTC day; leaves headroom for manual checks on the website |
 
+### Auto-ban by AbuseIPDB score (optional, off by default)
+
+With lookups on, the dashboard can also push a **time-limited** ban to
+CrowdSec for IPs that are both bad locally and known bad elsewhere. Turn it
+on under **Settings → AbuseIPDB → Auto-ban**. An IP is banned when **all** of
+these hold:
+
+- its AbuseIPDB score is at least the minimum (default **75 %**) and it isn't
+  whitelisted on AbuseIPDB,
+- it has at least the minimum number of local bans (default **3**). Normal
+  CrowdSec scenarios and AppSec bans both count; community-blocklist
+  entries don't,
+- it isn't already under a ban escalated by this dashboard.
+
+The ban is a regular CrowdSec decision (scenario
+`npm-crowd-dash/abuseipdb-escalation`, default **30 days**), so every bouncer,
+e.g. NPMplus, blocks the IP for everything. When it expires and the IP comes
+back and gets banned locally again, it can be escalated again. Every escalation
+is listed under **Escalated bans** on the Reports page. To undo one early:
+`cscli decisions delete --ip <ip>`.
+
+The Settings page values override these env defaults:
+`ABUSEIPDB_BAN_ENABLED` (`false`), `ABUSEIPDB_BAN_MIN_SCORE` (`75`),
+`ABUSEIPDB_BAN_MIN_BANS` (`3`), `ABUSEIPDB_BAN_DAYS` (`30`).
+
+The existing repeat-offender escalation (`REPEAT_OFFENDER_ESCALATION_*`) now
+works the same way: once its ban expires, an IP that comes back can be
+escalated again.
+
 ## Notes
 
 - AppSec/WAF blocks (e.g. from `crowdsecurity/appsec-virtual-patching`) are

@@ -158,3 +158,43 @@ def get_abuseipdb_enabled() -> bool:
 
 def save_abuseipdb_enabled(enabled: bool) -> None:
     db.set_settings({_ABUSEIPDB_ENABLED_KEY: "1" if enabled else "0"})
+
+
+# --- AbuseIPDB auto-ban -----------------------------------------------------
+
+@dataclass
+class AbuseBanSettings:
+    enabled: bool
+    min_score: int
+    min_bans: int
+    days: int
+
+
+_BAN_KEYS = ("abuseipdb_ban_enabled", "abuseipdb_ban_min_score", "abuseipdb_ban_min_bans", "abuseipdb_ban_days")
+
+
+def _int(raw: str | None, default: int, lo: int, hi: int) -> int:
+    try:
+        return min(hi, max(lo, int(raw))) if raw not in (None, "") else default
+    except ValueError:
+        return default
+
+
+def get_abuse_ban_settings() -> AbuseBanSettings:
+    s = db.get_settings(list(_BAN_KEYS))
+    enabled_raw = s.get("abuseipdb_ban_enabled")
+    return AbuseBanSettings(
+        enabled=env_settings.abuseipdb_ban_enabled if enabled_raw is None else enabled_raw == "1",
+        min_score=_int(s.get("abuseipdb_ban_min_score"), env_settings.abuseipdb_ban_min_score, 1, 100),
+        min_bans=_int(s.get("abuseipdb_ban_min_bans"), env_settings.abuseipdb_ban_min_bans, 1, 1000),
+        days=_int(s.get("abuseipdb_ban_days"), env_settings.abuseipdb_ban_days, 1, 3650),
+    )
+
+
+def save_abuse_ban_settings(*, enabled: bool, min_score: int, min_bans: int, days: int) -> None:
+    db.set_settings({
+        "abuseipdb_ban_enabled": "1" if enabled else "0",
+        "abuseipdb_ban_min_score": str(min(100, max(1, min_score))),
+        "abuseipdb_ban_min_bans": str(max(1, min_bans)),
+        "abuseipdb_ban_days": str(min(3650, max(1, days))),
+    })

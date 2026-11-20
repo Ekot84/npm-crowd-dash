@@ -46,6 +46,16 @@ class Settings(BaseSettings):
     abuseipdb_cache_days: int = 7
     abuseipdb_daily_limit: int = 900
 
+    # Auto-ban (escalation) based on AbuseIPDB score — see
+    # poller._escalate_abuseipdb. Off by default; these are the defaults the
+    # Settings page starts from, and anything saved there overrides them.
+    # Needs AbuseIPDB lookups to be on (key set + switched on), since it acts
+    # on the cached scores those lookups produce.
+    abuseipdb_ban_enabled: bool = False
+    abuseipdb_ban_min_score: int = 75
+    abuseipdb_ban_min_bans: int = 3
+    abuseipdb_ban_days: int = 30
+
     # Used to actually send an abuse report from the Reports page (see
     # app/mailer.py) — nothing is ever emailed automatically. Set these (or
     # fill in the same fields on the Settings page) before the "Send report"

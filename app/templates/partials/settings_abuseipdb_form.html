@@ -27,6 +27,44 @@
         (UTC day){% if abuseipdb.api_remaining is not none %} · AbuseIPDB says {{ abuseipdb.api_remaining }} left{% endif %}
         · cached results reused for {{ abuseipdb.cache_days }} days.
     </p>
+
+    <h3 class="settings-subhead">Auto-ban</h3>
+    <form class="settings-form"
+          hx-post="/settings/abuseipdb-ban"
+          hx-target="#abuseipdb-settings-wrap"
+          hx-swap="outerHTML">
+        <div class="settings-row">
+            <label>
+                <input type="checkbox" name="enabled" {{ 'checked' if ban.enabled }}>
+                Ban IPs with a high AbuseIPDB score in CrowdSec
+            </label>
+            <p class="filter-hint">
+                Pushes a time-limited ban to CrowdSec, so NPMplus blocks the IP for
+                everything (normal scenarios and AppSec alike). Only acts on cached
+                scores, so AbuseIPDB lookups above must be on.
+                Escalated IPs are listed on the <a href="/reports">Reports</a> page.
+            </p>
+            {% if ban.enabled and not abuseipdb_switch %}
+            <p class="filter-hint settings-warning">Lookups are switched off, so auto-ban won't do anything.</p>
+            {% endif %}
+        </div>
+        <div class="settings-row">
+            <label for="ban_min_score">Minimum AbuseIPDB score (%)</label>
+            <input type="number" id="ban_min_score" name="min_score" min="1" max="100" value="{{ ban.min_score }}">
+        </div>
+        <div class="settings-row">
+            <label for="ban_min_bans">Minimum local bans</label>
+            <input type="number" id="ban_min_bans" name="min_bans" min="1" value="{{ ban.min_bans }}">
+            <p class="filter-hint">Both conditions must be met. Only IPs that are also looked up (banned {{ repeat_offender_threshold }}+ times) ever have a score, so a value below that has no effect.</p>
+        </div>
+        <div class="settings-row">
+            <label for="ban_days">Ban length (days)</label>
+            <input type="number" id="ban_days" name="days" min="1" max="3650" value="{{ ban.days }}">
+            <p class="filter-hint">If the IP comes back after the ban expires, it can be banned again.</p>
+        </div>
+        <button type="submit" class="pager-btn">Save</button>
+    </form>
+
     {% if abuseipdb.paused_until %}
     <p class="filter-hint settings-warning">Paused until {{ abuseipdb.paused_until | ts }}{% if abuseipdb.last_error %}: {{ abuseipdb.last_error }}{% endif %}</p>
     {% elif abuseipdb.last_error %}

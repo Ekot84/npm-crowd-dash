@@ -1,3 +1,4 @@
+import re
 import sqlite3
 import time
 from contextlib import contextmanager
@@ -111,6 +112,40 @@ def init_db() -> None:
             conn.execute("ALTER TABLE bans ADD COLUMN matched_rule TEXT")
         if "is_cloud_host" not in cols:
             conn.execute("ALTER TABLE bans ADD COLUMN is_cloud_host INTEGER NOT NULL DEFAULT 0")
+        _migrate_escalations(conn)
+
+
+_GO_DUR_RE = re.compile(r"([\d.]+)(h|m|s)")
+
+
+def _go_duration_seconds(duration: str | None) -> int:
+    """'720h' / '8760h' / '1h30m' -> seconds (CrowdSec's Go duration format)."""
+    unit = {"h": 3600, "m": 60, "s": 1}
+    return int(sum(float(v) * unit[u] for v, u in _GO_DUR_RE.findall(duration or "")))
+
+
+def _migrate_escalations(conn: sqlite3.Connection) -> None:
+    """Escalations used to fire once per IP forever (status='sent' blocked any
+    later escalation, even after the long ban had expired). They now carry
+    an explicit expires_at so an IP that comes back after its escalated ban
+    ran out can be escalated again, plus `kind` (repeat / abuseipdb) and the
+    AbuseIPDB score at the time. Existing rows get expires_at backfilled
+    from escalated_at + their stored duration; kind defaults to 'repeat',
+    the only kind that existed before."""
+    cols = {row["name"] for row in conn.execute("PRAGMA table_info(escalations)").fetchall()}
+    if "expires_at" not in cols:
+        conn.execute("ALTER TABLE escalations ADD COLUMN expires_at INTEGER")
+    if "kind" not in cols:
+        conn.execute("ALTER TABLE escalations ADD COLUMN kind TEXT NOT NULL DEFAULT 'repeat'")
+    if "abuse_score" not in cols:
+        conn.execute("ALTER TABLE escalations ADD COLUMN abuse_score INTEGER")
+    for row in conn.execute(
+        "SELECT ip, escalated_at, decision_duration FROM escalations WHERE expires_at IS NULL"
+    ).fetchall():
+        conn.execute(
+            "UPDATE escalations SET expires_at = ? WHERE ip = ?",
+            (row["escalated_at"] + _go_duration_seconds(row["decision_duration"]), row["ip"]),
+        )
 
 
 def _migrate_abuse_reports(conn: sqlite3.Connection) -> None:
@@ -700,36 +735,97 @@ def local_ban_count(ip: str) -> int:
         return row["count"]
 
 
-def has_sent_escalation(ip: str) -> bool:
-    """True once a manual escalation ban has already been successfully
-    pushed for this IP. A previous *failed* attempt doesn't count, so it's
-    retried the next time this IP earns another local ban rather than
-    silently never happening (same retry-on-failure shape as abuse_reports'
-    report_candidates)."""
+def has_active_escalation(ip: str) -> bool:
+    """True while a successfully pushed escalation ban for this IP is still
+    running. Once it has expired, the IP can be escalated again if it comes
+    back — previously one escalation blocked the IP from ever being
+    escalated again. A *failed* attempt never blocks (retried on the next
+    trigger)."""
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT 1 FROM escalations WHERE ip = ? AND status = 'sent'", (ip,)
+            "SELECT 1 FROM escalations WHERE ip = ? AND status = 'sent' AND expires_at > ?",
+            (ip, int(time.time())),
         ).fetchone()
         return row is not None
 
 
-def record_escalation(ip: str, *, times_banned: int, duration: str, status: str) -> None:
-    """status is 'sent' or 'failed'. Upserts by ip — unlike abuse_reports,
-    there's nothing to keep a full attempt history of here beyond "did the
-    long ban land or not", so each new attempt just overwrites the last."""
+def record_escalation(
+    ip: str, *, times_banned: int, duration: str, status: str,
+    kind: str = "repeat", abuse_score: int | None = None,
+) -> None:
+    """status is 'sent' or 'failed'. Upserts by ip — only the latest
+    escalation per IP matters (is it still running, and why was it made)."""
+    now = int(time.time())
     with get_conn() as conn:
         conn.execute(
             """
-            INSERT INTO escalations (ip, escalated_at, times_banned_at_escalation, decision_duration, status)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO escalations (ip, escalated_at, times_banned_at_escalation, decision_duration,
+                                     status, expires_at, kind, abuse_score)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(ip) DO UPDATE SET
                 escalated_at = excluded.escalated_at,
                 times_banned_at_escalation = excluded.times_banned_at_escalation,
                 decision_duration = excluded.decision_duration,
-                status = excluded.status
+                status = excluded.status,
+                expires_at = excluded.expires_at,
+                kind = excluded.kind,
+                abuse_score = excluded.abuse_score
             """,
-            (ip, int(time.time()), times_banned, duration, status),
+            (ip, now, times_banned, duration, status, now + _go_duration_seconds(duration), kind, abuse_score),
         )
+
+
+def abuseipdb_ban_candidates(min_score: int, min_bans: int, limit: int = 10) -> list[dict]:
+    """IPs that qualify for an AbuseIPDB-based escalation ban:
+    - at least `min_bans` local-origin bans (CAPI/lists/cscli never count),
+    - a cached AbuseIPDB score >= `min_score`, not whitelisted there,
+    - and no escalation currently running. An IP whose earlier escalation
+      has expired only qualifies again once it has been banned locally
+      *after* that expiry (i.e. it actually came back).
+    A failed push is retried at most once an hour, so a CrowdSec LAPI that
+    refuses writes isn't hammered every poll cycle."""
+    now = int(time.time())
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT b.ip, COUNT(*) AS times_banned, MAX(b.created_at) AS last_seen,
+                   a.score AS score, e.status AS e_status, e.expires_at AS e_expires,
+                   e.escalated_at AS e_at
+            FROM bans b
+            JOIN abuseipdb_cache a ON a.ip = b.ip
+            LEFT JOIN escalations e ON e.ip = b.ip
+            WHERE (b.origin IS NULL OR b.origin = 'crowdsec')
+              AND a.score >= ?
+              AND COALESCE(a.is_whitelisted, 0) = 0
+              AND a.error IS NULL
+            GROUP BY b.ip
+            HAVING COUNT(*) >= ?
+              AND (
+                    e_status IS NULL
+                 OR (e_status = 'failed' AND e_at < ?)
+                 OR (e_status = 'sent' AND e_expires <= ? AND MAX(b.created_at) > e_expires)
+              )
+            ORDER BY last_seen DESC
+            LIMIT ?
+            """,
+            (min_score, min_bans, now - 3600, now, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def escalation_history(limit: int = 50) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT ip, escalated_at, expires_at, times_banned_at_escalation, decision_duration,
+                   status, kind, abuse_score
+            FROM escalations
+            ORDER BY escalated_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
 
 def get_settings(keys: list[str]) -> dict[str, str | None]:
