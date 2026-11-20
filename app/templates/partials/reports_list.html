@@ -1,3 +1,4 @@
+{% from "partials/_sort.html" import sort_th %}
 <div id="reports-wrap" class="reports-panels">
     {% if message %}
     <p class="{{ 'save-banner' if message_ok else 'settings-warning' }}">{{ message }}</p>
@@ -7,7 +8,7 @@
         <div class="panel-heading">
             <h2>Pending reports</h2>
             <button type="button" class="pager-btn"
-                    hx-get="/partials/reports" hx-target="#reports-wrap" hx-swap="outerHTML">
+                    hx-get="/partials/reports?sort={{ sort }}&dir={{ dir }}" hx-target="#reports-wrap" hx-swap="outerHTML">
                 ↻ Refresh
             </button>
         </div>
@@ -15,7 +16,7 @@
             Repeat offenders banned {{ repeat_offender_threshold }}+ times that
             don't have a successfully sent abuse report on file yet{% if report_max_age_days %},
             seen within the last {{ report_max_age_days }} days (change on the
-            Settings page){% endif %} — most recently seen first. Nothing is
+            Settings page){% endif %}. Click a column header to sort. Nothing is
             emailed automatically — review the recipient and text, then send.
             Once a report is marked "sent" below, that IP won't show up here
             again, so the same IP is never reported twice by mistake. This list
@@ -23,7 +24,12 @@
             — use Refresh to pick up newly-qualifying IPs.
         </p>
         <table class="stats-table">
-            <thead><tr><th>IP</th><th>Times banned</th><th>Last seen</th><th></th></tr></thead>
+            <thead><tr>
+                {{ sort_th("IP", "ip", sort, dir, "/partials/reports?", "#reports-wrap", "asc") }}
+                {{ sort_th("Times banned", "times", sort, dir, "/partials/reports?", "#reports-wrap") }}
+                {{ sort_th("Last seen", "last_seen", sort, dir, "/partials/reports?", "#reports-wrap") }}
+                <th></th>
+            </tr></thead>
             <tbody>
                 {% for row in candidates %}
                 <tr>

@@ -130,7 +130,10 @@ async def stats_page(request: Request):
 
 
 @app.get("/partials/stats")
-async def stats_partial(request: Request, status: str = "", period: str = ""):
+async def stats_partial(
+    request: Request, status: str = "", period: str = "", sort: str = "", dir: str = ""
+):
+    repeat_sort, repeat_dir = _norm_sort(sort, dir, ("times", "desc"), _REPEAT_SORTS)
     country_rows, country_has_prev, country_has_next = _paginate(
         db.stats_by_country(status=status, limit=_STATS_PAGE_SIZE), 0
     )
@@ -141,7 +144,7 @@ async def stats_partial(request: Request, status: str = "", period: str = ""):
         db.stats_by_as(status=status, limit=_STATS_PAGE_SIZE), 0
     )
     repeat_rows_raw, repeat_has_prev, repeat_has_next = _paginate(
-        db.stats_top_ips(period=period, limit=_STATS_PAGE_SIZE), 0
+        db.stats_top_ips(period=period, limit=_STATS_PAGE_SIZE, sort=repeat_sort, direction=repeat_dir), 0
     )
     repeat_rows = [dict(r) for r in repeat_rows_raw]
     for r in repeat_rows:
@@ -173,6 +176,8 @@ async def stats_partial(request: Request, status: str = "", period: str = ""):
             "repeat_offset": 0,
             "repeat_has_prev": repeat_has_prev,
             "repeat_has_next": repeat_has_next,
+            "repeat_sort": repeat_sort,
+            "repeat_dir": repeat_dir,
             "period": period,
             "retention_days": settings.retention_days,
         },
@@ -181,7 +186,8 @@ async def stats_partial(request: Request, status: str = "", period: str = ""):
 
 @app.get("/partials/stats/panel")
 async def stats_panel(
-    request: Request, kind: str, status: str = "", offset: int = 0, period: str = ""
+    request: Request, kind: str, status: str = "", offset: int = 0, period: str = "",
+    sort: str = "", dir: str = "",
 ):
     common = {
         "status": status,
@@ -218,8 +224,11 @@ async def stats_panel(
         # Independent of `status` above (repeat offenders always cover both
         # active and expired bans) — `period` is its own, separate filter
         # local to this one panel, not shared with the other panels' status.
+        sort, dir = _norm_sort(sort, dir, ("times", "desc"), _REPEAT_SORTS)
         raw, has_prev, has_next = _paginate(
-            db.stats_top_ips(period=period, limit=_STATS_PAGE_SIZE, offset=offset), offset
+            db.stats_top_ips(
+                period=period, limit=_STATS_PAGE_SIZE, offset=offset, sort=sort, direction=dir
+            ), offset
         )
         rows = [dict(r) for r in raw]
         for r in rows:
@@ -229,15 +238,32 @@ async def stats_panel(
             {
                 **common, "rows": rows, "has_prev": has_prev, "has_next": has_next,
                 "period": period, "retention_days": settings.retention_days,
+                "sort": sort, "dir": dir,
             },
         )
     return JSONResponse({"error": f"unknown kind: {kind}"}, status_code=400)
 
 
-def _reports_context(*, message: str | None = None, message_ok: bool = True) -> dict:
+def _norm_sort(sort: str, direction: str, default: tuple[str, str], allowed: tuple[str, ...]) -> tuple[str, str]:
+    """Normalize sort/dir query params to known values so the templates can
+    always mark exactly one header as active."""
+    if sort not in allowed:
+        return default
+    return sort, ("asc" if direction == "asc" else "desc")
+
+
+_REPORT_SORTS = ("ip", "times", "last_seen")
+_REPEAT_SORTS = ("ip", "times", "last_seen", "country", "as")
+
+
+def _reports_context(
+    *, message: str | None = None, message_ok: bool = True, sort: str = "", direction: str = ""
+) -> dict:
+    sort, direction = _norm_sort(sort, direction, ("last_seen", "desc"), _REPORT_SORTS)
     max_age_days = runtime_settings.get_report_max_age_days()
     candidates = db.report_candidates(
-        settings.repeat_offender_threshold, max_age_days, limit=_REPORTS_CANDIDATES_LIMIT
+        settings.repeat_offender_threshold, max_age_days, limit=_REPORTS_CANDIDATES_LIMIT,
+        sort=sort, direction=direction,
     )
     for row in candidates:
         row["last_seen_str"] = _fmt_ts(row["last_seen"])
@@ -251,6 +277,8 @@ def _reports_context(*, message: str | None = None, message_ok: bool = True) -> 
         "history": history,
         "repeat_offender_threshold": settings.repeat_offender_threshold,
         "report_max_age_days": max_age_days,
+        "sort": sort,
+        "dir": direction,
         "message": message,
         "message_ok": message_ok,
     }
@@ -272,8 +300,8 @@ async def reports_count_partial(request: Request):
 
 
 @app.get("/partials/reports")
-async def reports_partial(request: Request):
-    return templates.TemplateResponse(request, "partials/reports_list.html", _reports_context())
+async def reports_partial(request: Request, sort: str = "", dir: str = ""):
+    return templates.TemplateResponse(request, "partials/reports_list.html", _reports_context(sort=sort, direction=dir))
 
 
 @app.get("/partials/reports/review")

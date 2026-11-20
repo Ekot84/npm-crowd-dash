@@ -1,0 +1,13 @@
+{# Clickable, server-side sorted column header. `url` must already contain a
+   "?" and everything else the target endpoint needs (period, offset=0...);
+   sort/dir are appended. Clicking the active column flips direction;
+   clicking another column starts at its own sensible default direction. #}
+{% macro sort_th(label, key, sort, dir, url, target, first_dir='desc') -%}
+{%- set active = (sort == key) -%}
+{%- set next_dir = (('asc' if dir == 'desc' else 'desc') if active else first_dir) -%}
+<th class="sortable{{ ' sorted' if active }}" role="button" tabindex="0"
+    aria-sort="{{ ('ascending' if dir == 'asc' else 'descending') if active else 'none' }}"
+    hx-get="{{ url }}&sort={{ key }}&dir={{ next_dir }}"
+    hx-target="{{ target }}" hx-swap="outerHTML"
+    hx-trigger="click, keyup[key=='Enter']">{{ label }}<span class="sort-ind">{{ (' ▲' if dir == 'asc' else ' ▼') if active else '' }}</span></th>
+{%- endmacro %}

@@ -325,7 +325,35 @@ def _repeat_offender_period_cutoff(period: str) -> int | None:
     return int(time.time()) - seconds
 
 
-def stats_top_ips(period: str = "all", limit: int = 5, offset: int = 0) -> list[sqlite3.Row]:
+# Column-header sorting (Reports pending list + Repeat offenders panel).
+# Only whitelisted keys ever reach SQL — the user-supplied value is used as a
+# dict key, never interpolated. Every order ends with `ip` as a final
+# tie-break so paging through equal values (e.g. many IPs banned 2 times)
+# is stable and never shows the same row on two pages.
+SORT_COLUMNS = {
+    "ip": "ip",
+    "times": "times_banned",
+    "last_seen": "last_seen",
+    "country": "country",
+    "as": "as_name",
+}
+
+
+def _order_by(sort: str | None, direction: str | None, default: str, allowed: tuple[str, ...]) -> str:
+    key = sort if sort in allowed else default
+    d = "ASC" if direction == "asc" else "DESC"
+    col = SORT_COLUMNS[key]
+    tie = "last_seen DESC, ip ASC" if key != "last_seen" else "ip ASC"
+    if key == "ip":
+        tie = "last_seen DESC"
+    # NULLs (no country/AS known) always last, whichever direction.
+    return f"ORDER BY ({col} IS NULL), {col} {d}, {tie}"
+
+
+def stats_top_ips(
+    period: str = "all", limit: int = 5, offset: int = 0,
+    sort: str | None = None, direction: str | None = None,
+) -> list[sqlite3.Row]:
     """Repeat offenders, regardless of current (active/expired) status.
     Excludes CAPI/lists/cscli-origin bans — those were never observed locally
     (proactively pushed down from CrowdSec's shared community blocklist), so
@@ -358,7 +386,7 @@ def stats_top_ips(period: str = "all", limit: int = 5, offset: int = 0) -> list[
             {where}
             GROUP BY ip
             HAVING COUNT(*) > 1
-            ORDER BY times_banned DESC, last_seen DESC
+            {_order_by(sort, direction, "times", ("ip", "times", "last_seen", "country", "as"))}
             LIMIT ? OFFSET ?
             """,
             params,
@@ -536,7 +564,10 @@ def stats_by_scenario(status: str = "active", limit: int = 5, offset: int = 0) -
         ).fetchall()
 
 
-def report_candidates(threshold: int, max_age_days: int = 0, limit: int = 50) -> list[dict]:
+def report_candidates(
+    threshold: int, max_age_days: int = 0, limit: int = 50,
+    sort: str | None = None, direction: str | None = None,
+) -> list[dict]:
     """Repeat offenders (ban count >= threshold) that don't already have a
     *successfully sent* abuse report on file — the pending queue on the
     Reports page. A previous failed attempt (SMTP down, no abuse email found
@@ -567,7 +598,7 @@ def report_candidates(threshold: int, max_age_days: int = 0, limit: int = 50) ->
     cutoff = int(time.time()) - max_age_days * 86400 if max_age_days > 0 else 0
     with get_conn() as conn:
         rows = conn.execute(
-            """
+            f"""
             SELECT ip, COUNT(*) AS times_banned, MIN(created_at) AS first_seen,
                    MAX(created_at) AS last_seen
             FROM bans
@@ -576,7 +607,7 @@ def report_candidates(threshold: int, max_age_days: int = 0, limit: int = 50) ->
             HAVING COUNT(*) >= ?
               AND MAX(created_at) >= ?
               AND ip NOT IN (SELECT ip FROM abuse_reports WHERE status = 'sent')
-            ORDER BY last_seen DESC, times_banned DESC
+            {_order_by(sort, direction, "last_seen", ("ip", "times", "last_seen"))}
             LIMIT ?
             """,
             (threshold, cutoff, limit),

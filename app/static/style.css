@@ -298,6 +298,21 @@ main {
     letter-spacing: 0.04em;
 }
 
+.stats-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.stats-table th.sortable:hover,
+.stats-table th.sortable:focus-visible {
+    color: var(--fg);
+}
+
+.stats-table th.sorted {
+    color: var(--fg);
+}
+
 .flagged td {
     font-weight: 700;
 }

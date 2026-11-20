@@ -1,10 +1,15 @@
+{% from "partials/_sort.html" import sort_th %}
 <div id="panel-repeat-offenders"
-     hx-get="/partials/stats/panel?kind=repeat-offenders&period={{ period }}&offset={{ offset }}"
+     hx-get="/partials/stats/panel?kind=repeat-offenders&period={{ period }}&offset={{ offset }}&sort={{ sort }}&dir={{ dir }}"
      hx-trigger="every 30s"
      hx-swap="outerHTML">
+    {# Read by the whole-page 30s refresh in stats.html (hx-include) so a
+       chosen sort survives it instead of snapping back to the default. #}
+    <input type="hidden" id="repeat-offenders-sort" name="sort" value="{{ sort }}">
+    <input type="hidden" id="repeat-offenders-dir" name="dir" value="{{ dir }}">
     <div class="filter-bar">
         <select id="repeat-offenders-period" name="period"
-                hx-get="/partials/stats/panel?kind=repeat-offenders&offset=0"
+                hx-get="/partials/stats/panel?kind=repeat-offenders&offset=0&sort={{ sort }}&dir={{ dir }}"
                 hx-include="this"
                 hx-target="#panel-repeat-offenders"
                 hx-swap="outerHTML">
@@ -16,7 +21,14 @@
         <span class="filter-hint">times banned / last seen below are counted within this window only — independent of the Active/Expired filter above. "All" means everything still kept locally, not literal full history: expired/revoked bans older than {{ retention_days }} days are pruned automatically (see RETENTION_DAYS).</span>
     </div>
     <table class="stats-table">
-        <thead><tr><th>IP</th><th>Times banned</th><th>Country</th><th>AS</th><th>Last seen</th></tr></thead>
+        {% set ro_url = "/partials/stats/panel?kind=repeat-offenders&offset=0&period=" ~ period %}
+        <thead><tr>
+            {{ sort_th("IP", "ip", sort, dir, ro_url, "#panel-repeat-offenders", "asc") }}
+            {{ sort_th("Times banned", "times", sort, dir, ro_url, "#panel-repeat-offenders") }}
+            {{ sort_th("Country", "country", sort, dir, ro_url, "#panel-repeat-offenders", "asc") }}
+            {{ sort_th("AS", "as", sort, dir, ro_url, "#panel-repeat-offenders", "asc") }}
+            {{ sort_th("Last seen", "last_seen", sort, dir, ro_url, "#panel-repeat-offenders") }}
+        </tr></thead>
         <tbody>
             {% for row in rows %}
             <tr class="{{ 'flagged' if row.times_banned >= repeat_offender_threshold else '' }}">
@@ -52,10 +64,10 @@
     {% if has_prev or has_next %}
     <div class="pager">
         <button type="button" class="pager-btn" {{ 'disabled' if not has_prev else '' }}
-                hx-get="/partials/stats/panel?kind=repeat-offenders&period={{ period }}&offset={{ [offset - page_size, 0] | max }}"
+                hx-get="/partials/stats/panel?kind=repeat-offenders&period={{ period }}&offset={{ [offset - page_size, 0] | max }}&sort={{ sort }}&dir={{ dir }}"
                 hx-target="#panel-repeat-offenders" hx-swap="outerHTML">←</button>
         <button type="button" class="pager-btn" {{ 'disabled' if not has_next else '' }}
-                hx-get="/partials/stats/panel?kind=repeat-offenders&period={{ period }}&offset={{ offset + page_size }}"
+                hx-get="/partials/stats/panel?kind=repeat-offenders&period={{ period }}&offset={{ offset + page_size }}&sort={{ sort }}&dir={{ dir }}"
                 hx-target="#panel-repeat-offenders" hx-swap="outerHTML">→</button>
     </div>
     {% endif %}
